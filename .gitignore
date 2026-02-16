@@ -6,6 +6,9 @@
 /key/
 ntgfilestore/
 
+# Claude Code local settings
+.claude/
+
 # User-specific files
 *.rsuser
 *.suo
