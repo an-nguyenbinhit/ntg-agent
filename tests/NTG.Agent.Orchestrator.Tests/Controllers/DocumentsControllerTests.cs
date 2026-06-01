@@ -374,7 +374,7 @@ public class DocumentsControllerTests
         // Arrange
         var request = new ImportWebPageRequest("https://example.com", null, new List<string>());
         _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Import failed"));
+            .ThrowsAsync(new InvalidOperationException("Import failed"));
         // Act
         var result = await _controller.ImportWebPage(_testAgentId, request);
         // Assert
@@ -452,7 +452,7 @@ public class DocumentsControllerTests
         // Arrange
         var request = new UploadTextContentRequest("Title", "Content", null, new List<string>());
         _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Import failed"));
+            .ThrowsAsync(new InvalidOperationException("Import failed"));
         // Act
         var result = await _controller.UploadTextContent(_testAgentId, request);
         // Assert
@@ -513,7 +513,7 @@ public class DocumentsControllerTests
         // we're just verifying the method executes without null reference exceptions
         Assert.That(result, Is.Not.Null);
     }
-    private static IFormFile CreateTestFile(string fileName, string content)
+    private static FormFile CreateTestFile(string fileName, string content)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
         var stream = new MemoryStream(bytes);

@@ -17,7 +17,7 @@ namespace NTG.Agent.Orchestrator.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.1")
+                .HasAnnotation("ProductVersion", "10.0.5")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -46,6 +46,9 @@ namespace NTG.Agent.Orchestrator.Migrations
 
                     b.Property<string>("McpServer")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -95,6 +98,7 @@ namespace NTG.Agent.Orchestrator.Migrations
                             IsDefault = true,
                             IsPublished = true,
                             McpServer = "",
+                            Mode = 0,
                             Name = "Default Agent",
                             OwnerUserId = "e0afe23f-b53c-4ad8-b718-cb4ff5bb9f71",
                             ProviderApiKey = "",
@@ -140,6 +144,49 @@ namespace NTG.Agent.Orchestrator.Migrations
                     b.HasIndex("AgentId");
 
                     b.ToTable("AgentTools");
+                });
+
+            modelBuilder.Entity("NTG.Agent.Orchestrator.Models.AnonymousSessions.AnonymousSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FirstMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<bool>("IsBlocked")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MessageCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ResetAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IpAddress");
+
+                    b.HasIndex("LastMessageAt");
+
+                    b.HasIndex("SessionId")
+                        .IsUnique();
+
+                    b.ToTable("AnonymousSessions");
                 });
 
             modelBuilder.Entity("NTG.Agent.Orchestrator.Models.Chat.Conversation", b =>
@@ -197,6 +244,12 @@ namespace NTG.Agent.Orchestrator.Migrations
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ThinkingContent")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ThinkingDurationMs")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -586,6 +639,12 @@ namespace NTG.Agent.Orchestrator.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal?>("ReasoningTokenCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<long?>("ReasoningTokens")
+                        .HasColumnType("bigint");
+
                     b.Property<TimeSpan>("ResponseTime")
                         .HasColumnType("time");
 
@@ -614,6 +673,12 @@ namespace NTG.Agent.Orchestrator.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AccentColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AppearanceTheme")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");

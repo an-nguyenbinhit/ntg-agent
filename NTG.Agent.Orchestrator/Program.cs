@@ -1,12 +1,16 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.KernelMemory;
-using NTG.Agent.Orchestrator.Services.Agents;
 using NTG.Agent.Orchestrator.Data;
+using NTG.Agent.Orchestrator.Models.AnonymousSessions;
+using NTG.Agent.Orchestrator.Models.Configuration;
+using NTG.Agent.Orchestrator.Services.Agents;
+using NTG.Agent.Orchestrator.Services.AnonymousSessions;
+using NTG.Agent.Orchestrator.Services.DocumentAnalysis;
 using NTG.Agent.Orchestrator.Services.Knowledge;
 using NTG.Agent.Orchestrator.Services.Memory;
 using NTG.Agent.Orchestrator.Services.TokenTracking;
-using NTG.Agent.Orchestrator.Models.Configuration;
 using NTG.Agent.ServiceDefaults;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
@@ -70,6 +74,7 @@ builder.Services.AddDbContext<AgentDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.Configure<LongTermMemorySettings>(builder.Configuration.GetSection("LongTermMemory"));
+builder.Services.Configure<DocumentIntelligenceSettings>(builder.Configuration.GetSection("Azure:DocumentIntelligence"));
 
 builder.Services.AddControllers();
 
@@ -77,11 +82,18 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo("../key/"))
     .SetApplicationName("NTGAgent");
 
-builder.Services.AddScoped<IAgentFactory, AgentFactory>();
+builder.Services.Configure<AnonymousUserSettings>(
+    builder.Configuration.GetSection("AnonymousUserSettings"));
+
+builder.Services.AddScoped<IAgentFactory,AgentFactory>();
 builder.Services.AddScoped<AgentService>();
 builder.Services.AddScoped<IKnowledgeService, KernelMemoryKnowledge>();
 builder.Services.AddScoped<IUserMemoryService, UserMemoryService>();
+builder.Services.AddScoped<IDocumentAnalysisService, DocumentAnalysisService>();
 builder.Services.AddScoped<ITokenTrackingService, TokenTrackingService>();
+builder.Services.AddScoped<IAnonymousSessionService, AnonymousSessionService>();
+builder.Services.AddScoped<IIpAddressService, IpAddressService>();
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddScoped<IKernelMemory>(serviceProvider =>
 {
@@ -93,6 +105,28 @@ builder.Services.AddScoped<IKernelMemory>(serviceProvider =>
                 ?? throw new InvalidOperationException("KernelMemory:ApiKey configuration is required");
 
     return new MemoryWebClient(endpoint, apiKey);
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    // Process X-Forwarded-For and X-Forwarded-Proto headers
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    // Clear default networks and proxies - be explicit about what we trust
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+
+    // TODO: In production, configure specific known proxies/load balancers:
+    // options.KnownProxies.Add(IPAddress.Parse("10.0.0.100"));
+    // options.KnownIPNetworks.Add(new IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
+    
+    // For Azure App Service, Azure Front Door, or other cloud services:
+    // The proxy IP addresses may be dynamic, so you may need to trust all proxies
+    // ONLY do this if your application is not directly accessible from the internet
+    // and all traffic goes through your trusted infrastructure
+    // Uncomment the following line only if needed:
+    // options.KnownIPNetworks.Add(new IPNetwork(IPAddress.Parse("0.0.0.0"), 0));
+    // options.KnownIPNetworks.Add(new IPNetwork(IPAddress.Parse("::"), 0));
 });
 
 builder.Services.AddAuthentication("Identity.Application")
@@ -111,6 +145,8 @@ else
 }
 
 app.UseHttpsRedirection();
+
+app.UseForwardedHeaders();
 
 app.UseAuthentication();
 
