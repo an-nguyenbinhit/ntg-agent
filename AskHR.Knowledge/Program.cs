@@ -128,6 +128,26 @@ internal static class Program
                 .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized)
                 .Produces<ProblemDetails>(StatusCodes.Status403Forbidden);
 
+            // Backend introspection: reports the vector store / embedding / text components
+            // actually registered in DI. Read-only; surfaced in the Admin portal so operators
+            // can see which RAG backend is live (the store is bound at startup, not per agent).
+            app.MapGet("/backend-info", (IServiceProvider sp) => Results.Ok(new
+                {
+                    memoryDb = sp.GetService<IMemoryDb>()?.GetType().Name ?? "Unknown",
+                    embeddingModel = sp.GetService<ITextEmbeddingGenerator>()?.GetType().Name ?? "Unknown",
+                    textModel = sp.GetService<ITextGenerator>()?.GetType().Name ?? "Unknown",
+                    healthy = true
+                }))
+                .AddEndpointFilter(errorFilter)
+                .AddEndpointFilter(authFilter)
+                .WithName("BackendInfo")
+                .WithDisplayName("BackendInfo")
+                .WithDescription("Show the active knowledge backend (vector store, embedding, text models).")
+                .WithSummary("Show the active knowledge backend.")
+                .Produces(StatusCodes.Status200OK)
+                .Produces<ProblemDetails>(StatusCodes.Status401Unauthorized)
+                .Produces<ProblemDetails>(StatusCodes.Status403Forbidden);
+
             if (config.ServiceAuthorization.Enabled && config.ServiceAuthorization.AccessKey1 == config.ServiceAuthorization.AccessKey2)
             {
                 app.Logger.LogError("KM Web Service: Access keys 1 and 2 have the same value. Keys should be different to allow rotation.");

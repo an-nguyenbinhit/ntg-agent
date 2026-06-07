@@ -1,5 +1,8 @@
 @using AskHR.Common.Dtos.Agents
+@using AskHR.Common.Dtos.Knowledge
+@using AskHR.Admin.Client.Services
 @inject AgentClient AgentClient
+@inject KnowledgeClient KnowledgeClient
 
 <div class="tab-pane fade show active">
     <div class="row">
@@ -204,6 +207,57 @@ You are a helpful AI assistant specialized in customer support. Always be polite
                     </button>
                 </div>
             </div>
+
+            <div class="card border-0 bg-light mt-3">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="bi bi-database me-2"></i>Knowledge Backend
+                    </h6>
+                    <p class="text-muted small mb-3">
+                        The vector store powering retrieval (RAG). Configured at deployment level
+                        for all agents &mdash; not editable per agent.
+                    </p>
+
+                    @if (backendLoading)
+                    {
+                        <div class="d-flex align-items-center small text-muted">
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            Loading backend info...
+                        </div>
+                    }
+                    else if (backendInfo is null)
+                    {
+                        <div class="small text-danger">
+                            <i class="bi bi-exclamation-triangle me-1"></i>Unable to reach the knowledge service.
+                        </div>
+                    }
+                    else
+                    {
+                        <dl class="row small mb-0">
+                            <dt class="col-5 text-muted">Vector store</dt>
+                            <dd class="col-7">@FriendlyDb(backendInfo.MemoryDb)</dd>
+
+                            <dt class="col-5 text-muted">Embedding</dt>
+                            <dd class="col-7">@backendInfo.EmbeddingModel</dd>
+
+                            <dt class="col-5 text-muted">Text model</dt>
+                            <dd class="col-7">@backendInfo.TextModel</dd>
+
+                            <dt class="col-5 text-muted">Status</dt>
+                            <dd class="col-7">
+                                @if (backendInfo.Healthy)
+                                {
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Healthy</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Unavailable</span>
+                                }
+                            </dd>
+                        </dl>
+                    }
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -221,8 +275,39 @@ You are a helpful AI assistant specialized in customer support. Always be polite
     // Advanced settings
     private double temperature = 0.7;
     private int maxTokens = 500;
-    
+
+    // Knowledge backend (read-only)
+    private KnowledgeBackendInfoDto? backendInfo;
+    private bool backendLoading = true;
+
     private readonly string defaultPrompt = "You are a helpful AI assistant. Please provide accurate and helpful responses to user queries.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            backendInfo = await KnowledgeClient.GetBackendInfoAsync();
+        }
+        catch
+        {
+            backendInfo = null;
+        }
+        finally
+        {
+            backendLoading = false;
+        }
+    }
+
+    // Maps the registered Kernel Memory IMemoryDb type name to a friendly label.
+    private static string FriendlyDb(string memoryDb) => memoryDb switch
+    {
+        var db when db.Contains("AzureAISearch", StringComparison.OrdinalIgnoreCase) => "Azure AI Search",
+        var db when db.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) => "SQL Server",
+        var db when db.Contains("Qdrant", StringComparison.OrdinalIgnoreCase) => "Qdrant",
+        var db when db.Contains("Postgres", StringComparison.OrdinalIgnoreCase) => "PostgreSQL (pgvector)",
+        var db when db.Contains("Simple", StringComparison.OrdinalIgnoreCase) => "Simple (in-memory/file)",
+        _ => memoryDb
+    };
 
     private async Task SaveAgentSetting()
     {

@@ -107,6 +107,21 @@ builder.Services.AddScoped<IKernelMemory>(serviceProvider =>
     return new MemoryWebClient(endpoint, apiKey);
 });
 
+// Typed HttpClient gateway for knowledge backend introspection (read-only Admin panel).
+// Uses the same Kernel Memory endpoint + API key as the MemoryWebClient above.
+builder.Services.AddHttpClient<IKnowledgeBackendProbe, KnowledgeBackendProbe>((serviceProvider, client) =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var endpoint = Environment.GetEnvironmentVariable("services__askhr-knowledge__https__0")
+                   ?? Environment.GetEnvironmentVariable("services__askhr-knowledge__http__0")
+                   ?? throw new InvalidOperationException("KernelMemory Endpoint configuration is required");
+    var apiKey = configuration["KernelMemory:ApiKey"]
+                ?? throw new InvalidOperationException("KernelMemory:ApiKey configuration is required");
+
+    client.BaseAddress = new Uri(endpoint.TrimEnd('/') + "/");
+    client.DefaultRequestHeaders.Add("Authorization", apiKey);
+});
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     // Process X-Forwarded-For and X-Forwarded-Proto headers
