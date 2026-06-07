@@ -388,3 +388,11 @@ vậy commit đi
 **Context**: Source control operation.
 
 ---
+
+## Construction: Per-Agent Index + Deny-by-default + Knowledge Backend Panel
+**Timestamp**: 2026-06-07T10:30:00Z
+**User Input**: "làm trên code có sẵn... ở Agent Dashboard thì thêm chọn Vector DB hoặc Azure AI Search... có cách nào tốt hơn không? → chọn Per-agent Index + deny-by-default → ok làm cả 2: commit + cập nhật sprint-01.md tick story + ghi audit.md"
+**AI Response**: "Analyzed brownfield reality vs greenfield plan; established that Kernel Memory binds the vector store at startup (not per-agent), so Vector DB is deployment config, not a dashboard toggle. Implemented on existing code with design patterns: (1) read-only Knowledge Backend panel — KnowledgeBackendInfoDto, KM /backend-info endpoint, IKnowledgeBackendProbe typed-HttpClient gateway, Admin-only KnowledgeController, KnowledgeClient + AgentSettingsTab card; Azure AI Search config scaffolded inactive (SQL Server stays for dev). (2) Per-agent index (agent-{id}) + deny-by-default in KernelMemoryKnowledge — removed allow-by-default global-search fallback, IndexFor throws on empty agentId; added strict-mock unit tests (26/26 pass). Committed as 2 code commits on branch feat/sprint01-knowledge-rbac; ticked S-0402 Done, S-0202/S-0103 In Progress in sprint-01.md; appended this audit entry. Flagged: documents in the default index require re-ingest."
+**Context**: Construction phase — Sprint 01 RBAC retrieval hardening (security-trimmed retrieval, deny-by-default) + knowledge backend observability.
+
+---
