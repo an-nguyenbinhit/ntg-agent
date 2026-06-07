@@ -2,17 +2,17 @@
 
 ## Project Information
 
-- **Project**: AskHR
-- **Project Type**: Greenfield documentation / requirements baseline
+- **Project**: NTG Agent / AskHR
+- **Project Type**: Brownfield application with AI-DLC requirements baseline
 - **Start Date**: 2026-06-06T00:00:00Z
 - **Current Phase**: INCEPTION
 - **Current Stage**: Requirements Scrum-Readiness Review
 
 ## Workspace State
 
-- **Existing Application Code**: No
+- **Existing Application Code**: Yes
 - **Primary Artifacts**: `aidlc-docs/requirements.md`, `aidlc-docs/units-retrieval-answer.md`, `aidlc-docs/units-security-identity.md`, `aidlc-docs/units-channels.md`, `aidlc-docs/units-governance-ops.md` (8 UoB gom theo chủ đề), `aidlc-docs/ADR-001-agent-runtime.md`
-- **Workspace Root**: `D:\AskHR`
+- **Workspace Root**: `D:\Projects\ntg-agent`
 - **Documentation Directory**: `aidlc-docs/`
 
 ## Extension Configuration
@@ -25,8 +25,8 @@
 
 | Stage | Status | Notes |
 |---|---|---|
-| Workspace Detection | Complete | No application code detected; documentation-first greenfield baseline. |
-| Requirements Analysis | Complete with Sprint-0 inputs | Requirement source and UoB decomposition exist; kickoff decisions are tracked in `AI-requirement.md` §2 and §18. |
+| Workspace Detection | Complete | Existing NTG Agent .NET application detected; AI-DLC docs define the AskHR requirement baseline inside this repo. |
+| Requirements Analysis | Complete with Sprint-0 inputs | Requirement source and UoB decomposition exist; kickoff decisions are tracked in `requirements.md` §3 and §10. |
 | User Stories | Pending | Scrum decomposition can start from UoB documents after Sprint-0 readiness checks. |
 | Workflow Planning | Pending | Next step is backlog/workflow planning by UoB dependency order. |
 | Application Design | Pending | Needed for domain model, service contracts, infrastructure boundaries and NFR decisions. |

@@ -1,5 +1,7 @@
 # Tài liệu Yêu cầu — NTG Agent (Enterprise RAG Chatbot)
 
+> **Scope:** Đây là current-state/gap document cho codebase NTG Agent hiện tại, không phải AI-DLC source-of-truth. Requirement source-of-truth cho AskHR nằm tại `aidlc-docs/requirements.md`.
+>
 > Tài liệu mô tả yêu cầu chức năng cho nền tảng chatbot doanh nghiệp dựa trên RAG.
 > Mỗi yêu cầu được gắn trạng thái triển khai hiện tại để theo dõi tiến độ và khoảng trống (gap).
 

@@ -3,14 +3,14 @@
   "newLinkFormat": "shortest",
   "alwaysUpdateLinks": true,
   "newFileLocation": "folder",
-  "newFileFolderPath": "docs",
+  "newFileFolderPath": "aidlc-docs",
   "attachmentFolderPath": "attachments",
   "showUnsupportedFiles": false,
   "showFrontmatter": true,
   "userIgnoreFilters": [
+    ".aidlc/aidlc-rules/",
     "aidlc-rule-details/",
     "templates/",
-    ".aidlc/",
     "attachments/"
   ]
 }

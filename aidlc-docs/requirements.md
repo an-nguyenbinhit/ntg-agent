@@ -381,7 +381,7 @@ Requirement đủ để bắt đầu chia **Epic / Capability / Story / Task** t
 
 | Readiness area | Status | Scrum handling |
 |---|---|---|
-| Product scope | Ready | Chia Epic theo UoB-01..08; giữ AI-requirement là source-of-truth. |
+| Product scope | Ready | Chia Epic theo UoB-01..08; giữ `requirements.md` là source-of-truth. |
 | Architecture direction | Ready | Azure-first, Azure AI Search, Azure OpenAI default, MAF runtime accepted in [[ADR-001-agent-runtime]]. |
 | Core contracts | Ready with normalization | Authorization Context, retrieval, audit, provider route và message contracts đã có; cần sync field `country/legalEntity/level` trong implementation stories. |
 | Business inputs | Sprint-0 required | Chốt source connector đầu tiên, HR document template, HR fallback contact, admin roles, data retention approval. |
