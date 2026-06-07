@@ -475,4 +475,49 @@ public class KernelMemoryKnowledgeTests
     }
 
     #endregion
+
+    #region Deny-by-default (per-agent index isolation)
+
+    // A strict mock makes any unexpected Kernel Memory call throw a MockException. If the
+    // guard ever let an empty agent through, these would surface MockException instead of the
+    // asserted ArgumentException — proving the request never reaches an unscoped global search.
+
+    [Test]
+    public void SearchAsync_WithEmptyAgentId_ThrowsAndNeverQueriesKernelMemory()
+    {
+        var strictMemory = new Mock<IKernelMemory>(MockBehavior.Strict);
+        var service = new KernelMemoryKnowledge(strictMemory.Object, _mockLogger.Object);
+
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            service.SearchAsync("any query", Guid.Empty, new List<string> { "hr" }));
+
+        strictMemory.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public void SearchAsync_UserOverload_WithEmptyAgentId_ThrowsAndNeverQueriesKernelMemory()
+    {
+        var strictMemory = new Mock<IKernelMemory>(MockBehavior.Strict);
+        var service = new KernelMemoryKnowledge(strictMemory.Object, _mockLogger.Object);
+
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            service.SearchAsync("any query", Guid.Empty, Guid.NewGuid()));
+
+        strictMemory.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public void ImportDocumentAsync_WithEmptyAgentId_ThrowsAndNeverWritesToKernelMemory()
+    {
+        var strictMemory = new Mock<IKernelMemory>(MockBehavior.Strict);
+        var service = new KernelMemoryKnowledge(strictMemory.Object, _mockLogger.Object);
+        using var content = new MemoryStream(new byte[] { 1, 2, 3 });
+
+        Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ImportDocumentAsync(content, "policy.docx", Guid.Empty, new List<string>()));
+
+        strictMemory.VerifyNoOtherCalls();
+    }
+
+    #endregion
 }

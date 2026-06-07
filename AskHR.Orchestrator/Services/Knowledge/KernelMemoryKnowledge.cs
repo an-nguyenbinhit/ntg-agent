@@ -17,32 +17,25 @@ public class KernelMemoryKnowledge : IKnowledgeService
     public async Task<string> ImportDocumentAsync(Stream content, string fileName, Guid agentId, List<string> tags, CancellationToken cancellationToken = default)
     {
         var tagCollection = ComposeTags(agentId, tags);
-        return await _kernelMemory.ImportDocumentAsync(content, fileName, tags: tagCollection, cancellationToken: cancellationToken);
+        return await _kernelMemory.ImportDocumentAsync(content, fileName, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
     }
 
     public async Task RemoveDocumentAsync(string documentId, Guid agentId, CancellationToken cancellationToken = default)
     {
-        await _kernelMemory.DeleteDocumentAsync(documentId, cancellationToken: cancellationToken);
+        await _kernelMemory.DeleteDocumentAsync(documentId, index: IndexFor(agentId), cancellationToken: cancellationToken);
     }
     public async Task<SearchResult> SearchAsync(string query, Guid agentId, List<string> tags, CancellationToken cancellationToken = default)
     {
-        SearchResult result;
         var filters = ComposeFilters(agentId, tags);
-        if (filters.Count > 0)
-        {
-            result = await _kernelMemory.SearchAsync(
-                query: query,
-                filters: filters,
-                limit: 3,
-                cancellationToken: cancellationToken);
-        }
-        else
-        {
-            result = await _kernelMemory.SearchAsync(
-                query: query,
-                limit: 3,
-                cancellationToken: cancellationToken);
-        }
+
+        // Deny-by-default: every query is scoped to the agent's own index, so a missing or
+        // empty permission filter can never fall through to a global, cross-agent search.
+        var result = await _kernelMemory.SearchAsync(
+            query: query,
+            index: IndexFor(agentId),
+            filters: filters.Count > 0 ? filters : null,
+            limit: 3,
+            cancellationToken: cancellationToken);
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {
@@ -53,8 +46,8 @@ public class KernelMemoryKnowledge : IKnowledgeService
 
     public async Task<SearchResult> SearchAsync(string query, Guid agentId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var result = await _kernelMemory.SearchAsync(query, cancellationToken: cancellationToken);
-        return result;
+        // Scoped to the agent's index (deny-by-default); never a global, cross-agent search.
+        return await _kernelMemory.SearchAsync(query, index: IndexFor(agentId), limit: 3, cancellationToken: cancellationToken);
     }
 
     public async Task<string> ImportWebPageAsync(string url, Guid agentId, List<string> tags, CancellationToken cancellationToken = default)
@@ -64,7 +57,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
             throw new ArgumentException("Invalid URL provided.", nameof(url));
         }
         var tagCollection = ComposeTags(agentId, tags);
-        var documentId = await _kernelMemory.ImportWebPageAsync(url, tags: tagCollection, cancellationToken: cancellationToken);
+        var documentId = await _kernelMemory.ImportWebPageAsync(url, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
         return documentId;
     }
 
@@ -78,12 +71,28 @@ public class KernelMemoryKnowledge : IKnowledgeService
         var tagCollection = ComposeTags(agentId, tags);
 
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
-        return await _kernelMemory.ImportDocumentAsync(stream, fileName, tags: tagCollection, cancellationToken: cancellationToken);
+        return await _kernelMemory.ImportDocumentAsync(stream, fileName, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
     }
 
     public async Task<StreamableFileContent> ExportDocumentAsync(string documentId, string fileName, Guid agentId, CancellationToken cancellationToken = default)
     {
-        return await _kernelMemory.ExportFileAsync(documentId, fileName, cancellationToken: cancellationToken);
+        return await _kernelMemory.ExportFileAsync(documentId, fileName, index: IndexFor(agentId), cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Resolves the per-agent Kernel Memory index. Each agent's documents live in their own
+    /// index, giving hard store-level isolation: an agent physically cannot retrieve another
+    /// agent's chunks even if tag filtering is misconfigured. The name is derived
+    /// deterministically from the agent id so it needs no extra config and cannot collide.
+    /// </summary>
+    private static string IndexFor(Guid agentId)
+    {
+        if (agentId == Guid.Empty)
+        {
+            throw new ArgumentException("A valid agentId is required to resolve the knowledge index.", nameof(agentId));
+        }
+
+        return $"agent-{agentId:N}";
     }
 
     private static TagCollection ComposeTags(Guid agentId, IEnumerable<string> tags)
