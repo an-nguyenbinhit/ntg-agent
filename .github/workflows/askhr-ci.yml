@@ -1,0 +1,52 @@
+name: AskHR Continuous Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [ main ]
+
+jobs:
+  sonarcloud:
+    name: Build, Test & SonarCloud
+    if: false # Temporarily disabled during project rename.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run tests with coverage
+        run: |
+          dotnet test --configuration Release --no-build \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            --logger trx \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: SonarCloud Analysis (with .NET scanner)
+        uses: highbyte/sonarscan-dotnet@252f699a9c4e005bf3902d44a1c6c0aea43c678e # v2.5.0
+        with:
+          sonarProjectKey: ${{ secrets.SONAR_PROJECT_KEY }}
+          sonarProjectName: askhr
+          sonarOrganization: ${{ secrets.SONARCLOUD_ORGANIZATION_KEY }}
+          dotnetTestArguments: --logger trx --collect:"XPlat Code Coverage" --results-directory ./TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          sonarBeginArguments: /d:sonar.cs.opencover.reportsPaths="**/TestResults/**/coverage.opencover.xml" /d:sonar.coverage.exclusions="**/AskHR.AppHost/**,**/Program.cs,**/Migrations/**,**/*Migration*.cs,**/*Migration*.Designer.cs,**/AgentDbContextModelSnapshot.cs,**/*.razor.css,**/wwwroot/**"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

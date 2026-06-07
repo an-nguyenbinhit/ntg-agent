@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["css/app.css"]" />
+    <link rel="stylesheet" href="@Assets["AskHR.WebClient.styles.css"]" />
+    <link rel="stylesheet" href="@Assets["css/codeblock-highlight.css"]" />
+
+    <!-- Highligh theme https://cdnjs.com/libraries/highlight.js -->
+    <!-- id is used by theme-switcher JS to swap light/dark stylesheet -->
+    <link id="hljs-theme-link" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/a11y-light.min.css" />
+
+    <!-- Boostrap icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="_content/BootstrapBlazor/css/bootstrap.blazor.bundle.min.css" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="InteractiveAuto" />
+</head>
+
+<body>
+    <!-- Inline theme init: runs before Blazor boots to eliminate flash-of-wrong-theme.
+         The MutationObserver below also guards against Blazor's enhanced-navigation
+         DOM morphing which would otherwise strip data-bs-theme from <html> and
+         reset the hljs stylesheet href to the server default. -->
+    <script>
+        (function () {
+            function applyTheme() {
+                var theme = localStorage.getItem('askhr-theme') || 'light';
+                var accent = localStorage.getItem('askhr-accent') || 'default';
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                if (accent !== 'default') {
+                    document.documentElement.setAttribute('data-accent', accent);
+                } else {
+                    document.documentElement.removeAttribute('data-accent');
+                }
+                fixHljsThemeLink(theme);
+            }
+
+            function fixHljsThemeLink(theme) {
+                var hljsLink = document.getElementById('hljs-theme-link');
+                if (!hljsLink) return;
+                var expected = theme === 'dark'
+                    ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/a11y-dark.min.css'
+                    : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/a11y-light.min.css';
+                // Only set if different to avoid triggering a stylesheet re-download
+                if (hljsLink.href !== expected) {
+                    hljsLink.href = expected;
+                }
+            }
+
+            // Apply on initial load
+            applyTheme();
+
+            // Guard against Blazor's enhanced-navigation DOM morphing removing the
+            // data-bs-theme / data-accent attributes from <html>.
+            var htmlObserver = new MutationObserver(function () {
+                var theme = localStorage.getItem('askhr-theme') || 'light';
+                var accent = localStorage.getItem('askhr-accent') || 'default';
+                if (document.documentElement.getAttribute('data-bs-theme') !== theme) {
+                    document.documentElement.setAttribute('data-bs-theme', theme);
+                }
+                if (accent === 'default') {
+                    if (document.documentElement.hasAttribute('data-accent')) {
+                        document.documentElement.removeAttribute('data-accent');
+                    }
+                } else {
+                    if (document.documentElement.getAttribute('data-accent') !== accent) {
+                        document.documentElement.setAttribute('data-accent', accent);
+                    }
+                }
+            });
+            htmlObserver.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-bs-theme', 'data-accent']
+            });
+
+            // Guard against enhanced-navigation morphing the hljs <link> href back
+            // to the server-default (a11y-light). We watch the <head> for attribute
+            // changes on any child element with id="hljs-theme-link".
+            var headObserver = new MutationObserver(function () {
+                var theme = localStorage.getItem('askhr-theme') || 'light';
+                fixHljsThemeLink(theme);
+            });
+            headObserver.observe(document.head, {
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['href']
+            });
+        })();
+    </script>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></script>
+    <!-- Highlight.js script https://cdnjs.com/libraries/highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="@Assets["js/codeblock-highlight.js"]"></script>
+    <script src="@Assets["js/speech-to-text.js"]"></script>
+    <script src="@Assets["js/conversation.js"]"></script>
+    <script src="@Assets["js/layout.js"]"></script>
+</body>
+
+</html>

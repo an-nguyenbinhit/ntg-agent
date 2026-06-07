@@ -1,0 +1,1088 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+using AskHR.Common.Dtos.Agents;
+using AskHR.Orchestrator.Services.Agents;
+using AskHR.Orchestrator.Controllers;
+using AskHR.Orchestrator.Data;
+using AskHR.Orchestrator.Models.Identity;
+using System.Security.Claims;
+using AgentModel = AskHR.Orchestrator.Models.Agents.Agent;
+namespace AskHR.Orchestrator.Tests.Controllers;
+[TestFixture]
+public class AgentAdminControllerTests
+{
+    private AgentDbContext _context;
+    private AgentAdminController _controller;
+    private Guid _testUserId;
+    private Guid _testAdminUserId;
+    private Mock<IAgentFactory> _mockAgentFactory;
+
+    [SetUp]
+    public void Setup()
+    {
+        var options = new DbContextOptionsBuilder<AgentDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        _context = new AgentDbContext(options);
+        _testUserId = Guid.NewGuid();
+        _testAdminUserId = Guid.NewGuid();
+        _mockAgentFactory = new();
+        // Mock the admin user principal
+        var adminUser = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, _testAdminUserId.ToString()),
+            new Claim(ClaimTypes.Role, "Admin"),
+        ], "mock"));
+        _controller = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = adminUser }
+            }
+        };
+    }
+    [TearDown]
+    public void TearDown()
+    {
+        _context.Database.EnsureDeleted();
+        _context.Dispose();
+    }
+    [Test]
+    public void Constructor_WhenAgentDbContextIsNull_ThrowsArgumentNullException()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => new AgentAdminController(null!, _mockAgentFactory.Object));
+    }
+    [Test]
+    public void Constructor_WhenValidParameters_CreatesInstance()
+    {
+        // Act
+        var controller = new AgentAdminController(_context, _mockAgentFactory.Object);
+        // Assert
+        Assert.That(controller, Is.Not.Null);
+    }
+    [Test]
+    public async Task GetAgents_WhenAgentsExist_ReturnsOkWithAgentList()
+    {
+        // Arrange
+        await SeedAgentsData();
+        // Act
+        var result = await _controller.GetAgents();
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agents = okResult.Value as IEnumerable<AgentListItem>;
+        Assert.That(agents, Is.Not.Null);
+        var agentList = agents.ToList();
+        Assert.That(agentList, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(agentList[0].Name, Is.EqualTo("Test Agent 1"));
+            Assert.That(agentList[0].OwnerEmail, Is.EqualTo("owner@test.com"));
+            Assert.That(agentList[0].UpdatedByEmail, Is.EqualTo("updater@test.com"));
+            Assert.That(agentList[1].Name, Is.EqualTo("Test Agent 2"));
+        }
+    }
+    [Test]
+    public async Task GetAgents_WhenNoAgentsExist_ReturnsOkWithEmptyList()
+    {
+        // Act
+        var result = await _controller.GetAgents();
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agents = okResult.Value as IEnumerable<AgentListItem>;
+        Assert.That(agents, Is.Not.Null);
+        Assert.That(agents, Is.Empty);
+    }
+    [Test]
+    public async Task GetAgents_WhenMultipleAgents_ReturnsAllAgents()
+    {
+        // Arrange
+        await SeedLargeAgentsData(10);
+        // Act
+        var result = await _controller.GetAgents();
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agents = okResult.Value as IEnumerable<AgentListItem>;
+        Assert.That(agents, Is.Not.Null);
+        var agentList = agents.ToList();
+        Assert.That(agentList, Has.Count.EqualTo(10));
+    }
+    [Test]
+    public async Task GetAgentById_WhenAgentExists_ReturnsOkWithAgentDetail()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        // Act
+        var result = await _controller.GetAgentById(agentId);
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agentDetail = okResult.Value as AgentDetail;
+        Assert.That(agentDetail, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(agentDetail.Id, Is.EqualTo(agentId));
+            Assert.That(agentDetail.Name, Is.EqualTo("Single Test Agent"));
+            Assert.That(agentDetail.Instructions, Is.EqualTo("Test instructions for single agent"));
+        }
+    }
+    [Test]
+    public async Task GetAgentById_WhenAgentDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        var nonExistentId = Guid.NewGuid();
+        // Act
+        var result = await _controller.GetAgentById(nonExistentId);
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+    }
+    [Test]
+    public async Task GetAgentById_WhenMultipleAgentsExistButRequestingSpecific_ReturnsCorrectAgent()
+    {
+        // Arrange
+        await SeedAgentsData();
+        var specificAgentId = Guid.NewGuid();
+        var specificAgent = new AgentModel
+        {
+            Id = specificAgentId,
+            Name = "Specific Agent",
+            Instructions = "Specific instructions",
+            OwnerUserId = _testUserId,
+            UpdatedByUserId = _testUserId
+        };
+        await _context.Agents.AddAsync(specificAgent);
+        await _context.SaveChangesAsync();
+        // Act
+        var result = await _controller.GetAgentById(specificAgentId);
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agentDetail = okResult.Value as AgentDetail;
+        Assert.That(agentDetail, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(agentDetail.Id, Is.EqualTo(specificAgentId));
+            Assert.That(agentDetail.Name, Is.EqualTo("Specific Agent"));
+            Assert.That(agentDetail.Instructions, Is.EqualTo("Specific instructions"));
+        }
+    }
+    [Test]
+    public async Task GetAgents_WhenUserIsNotAdmin_RequiresAdminRole()
+    {
+        // Arrange
+        var nonAdminUser = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new Claim(ClaimTypes.Role, "User"), // Not Admin role
+        ], "mock"));
+        var nonAdminController = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = nonAdminUser }
+            }
+        };
+        // Note: In a real scenario, this would be handled by the authorization middleware
+        // and the controller method wouldn't be called at all for non-admin users.
+        // This test just verifies the controller can be instantiated with non-admin users
+        // The actual authorization testing would be done at the integration test level
+        // Act & Assert - This just verifies the controller works when called
+        var result = await nonAdminController.GetAgents();
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+    }
+    [Test]
+    public async Task GetAgentById_WhenUserIsNotAdmin_RequiresAdminRole()
+    {
+        // Arrange
+        var nonAdminUser = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new Claim(ClaimTypes.Role, "User"), // Not Admin role
+        ], "mock"));
+        var nonAdminController = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = nonAdminUser }
+            }
+        };
+        // Act & Assert - In real scenario, authorization middleware would block this
+        var result = await nonAdminController.GetAgentById(Guid.NewGuid());
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+    }
+    [Test]
+    public async Task GetAgents_WhenUserIsAdmin_AllowsAccess()
+    {
+        // Arrange - Using the admin controller from setup
+        await SeedAgentsData();
+        // Act
+        var result = await _controller.GetAgents();
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agents = okResult.Value as IEnumerable<AgentListItem>;
+        Assert.That(agents, Is.Not.Null);
+        var agentList = agents.ToList();
+        Assert.That(agentList, Has.Count.EqualTo(2));
+    }
+    [Test]
+    public async Task GetAgentById_WhenUserIsAdmin_AllowsAccess()
+    {
+        // Arrange - Using the admin controller from setup
+        var agentId = await SeedSingleAgentData();
+        // Act
+        var result = await _controller.GetAgentById(agentId);
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var agentDetail = okResult.Value as AgentDetail;
+        Assert.That(agentDetail, Is.Not.Null);
+        Assert.That(agentDetail.Id, Is.EqualTo(agentId));
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenValidAgentProvided_ReturnsCreatedAtActionResult()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(
+            Guid.Empty,
+            "New Test Agent",
+            "Test instructions",
+            "OpenAI",
+            "https://api.openai.com/v1",
+            "test-api-key",
+            "gpt-4"
+        );
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<CreatedAtActionResult>());
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        Assert.That(createdResult.ActionName, Is.EqualTo(nameof(_controller.GetAgentById)));
+
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+        Assert.That(createdAgentId.Value, Is.Not.EqualTo(Guid.Empty));
+
+        // Verify agent was saved to database with correct properties
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.Id, Is.EqualTo(createdAgentId.Value));
+            Assert.That(savedAgent.Name, Is.EqualTo("New Test Agent"));
+            Assert.That(savedAgent.Instructions, Is.EqualTo("Test instructions"));
+            Assert.That(savedAgent.ProviderName, Is.EqualTo("OpenAI"));
+            Assert.That(savedAgent.ProviderEndpoint, Is.EqualTo("https://api.openai.com/v1"));
+            Assert.That(savedAgent.ProviderApiKey, Is.EqualTo("test-api-key"));
+            Assert.That(savedAgent.ProviderModelName, Is.EqualTo("gpt-4"));
+            Assert.That(savedAgent.OwnerUserId, Is.EqualTo(_testAdminUserId));
+            Assert.That(savedAgent.UpdatedByUserId, Is.EqualTo(_testAdminUserId));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenValidAgentProvided_SavesAgentToDatabase()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(
+            Guid.Empty,
+            "Database Test Agent",
+            "Instructions",
+            "AzureOpenAI",
+            "https://azure.openai.com",
+            "azure-key",
+            "gpt-4"
+        );
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved to database
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.Name, Is.EqualTo("Database Test Agent"));
+            Assert.That(savedAgent.Instructions, Is.EqualTo("Instructions"));
+            Assert.That(savedAgent.ProviderName, Is.EqualTo("AzureOpenAI"));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenOnlyNameProvided_CreatesAgentWithEmptyOptionalFields()
+    {
+        // Arrange
+        var newAgent = new AgentDetail()
+        {
+            Name = "Minimal Agent"
+        };
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<CreatedAtActionResult>());
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved to database with correct properties
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.Name, Is.EqualTo("Minimal Agent"));
+            Assert.That(savedAgent.Instructions, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderName, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderEndpoint, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderApiKey, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderModelName, Is.EqualTo(string.Empty));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenNullInstructionsProvided_CreatesAgentWithEmptyInstructions()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(
+            Guid.Empty,
+            "Agent With Null Instructions",
+            null!,
+            null!,
+            null!,
+            null!,
+            null!
+        );
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved to database with correct properties
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.Instructions, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderName, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderEndpoint, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderApiKey, Is.EqualTo(string.Empty));
+            Assert.That(savedAgent.ProviderModelName, Is.EqualTo(string.Empty));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenMcpServerProvided_SavesMcpServerValue()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(
+            Guid.Empty,
+            "Agent With MCP",
+            "Instructions",
+            "OpenAI",
+            "https://api.openai.com/v1",
+            "key",
+            "gpt-4"
+        )
+        {
+            McpServer = "https://mcp.example.com"
+        };
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved to database with MCP server
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        Assert.That(savedAgent.McpServer, Is.EqualTo("https://mcp.example.com"));
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenNullAgentProvided_ReturnsBadRequest()
+    {
+        // Act
+        var result = await _controller.CreateAgent(null!);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+        var badRequestResult = result as BadRequestObjectResult;
+        Assert.That(badRequestResult, Is.Not.Null);
+        Assert.That(badRequestResult.Value, Is.EqualTo("Invalid agent data."));
+    }
+
+    [Test]
+    public async Task CreateAgent_GeneratesNewGuid_ForAgentId()
+    {
+        // Arrange
+        var agent1 = new AgentDetail(Guid.Empty, "Agent 1", null!, null!, null!, null!, null!);
+        var agent2 = new AgentDetail(Guid.Empty, "Agent 2", null!, null!, null!, null!, null!);
+
+        // Act
+        var result1 = await _controller.CreateAgent(agent1);
+        var result2 = await _controller.CreateAgent(agent2);
+
+        // Assert
+        var createdId1 = (result1 as CreatedAtActionResult)?.Value as Guid?;
+        var createdId2 = (result2 as CreatedAtActionResult)?.Value as Guid?;
+
+        Assert.That(createdId1, Is.Not.Null);
+        Assert.That(createdId2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdId1.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(createdId2.Value, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(createdId1.Value, Is.Not.EqualTo(createdId2.Value));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_WhenUserIsNotAuthenticated_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var unauthenticatedController = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal() }
+            }
+        };
+        var newAgent = new AgentDetail(Guid.Empty, "Test Agent", null!, null!, null!, null!, null!);
+
+        // Act & Assert
+        Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await unauthenticatedController.CreateAgent(newAgent));
+    }
+
+    [Test]
+    public async Task CreateAgent_SetsOwnerAndUpdater_ToAuthenticatedUser()
+    {
+        // Arrange
+        var specificUserId = Guid.NewGuid();
+        var userWithSpecificId = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, specificUserId.ToString()),
+            new Claim(ClaimTypes.Role, "Admin"),
+        ], "mock"));
+
+        var controllerWithSpecificUser = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = userWithSpecificId }
+            }
+        };
+
+        var newAgent = new AgentDetail(Guid.Empty, "Test Agent", null!, null!, null!, null!, null!);
+
+        // Act
+        var result = await controllerWithSpecificUser.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved with correct owner and updater
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.OwnerUserId, Is.EqualTo(specificUserId));
+            Assert.That(savedAgent.UpdatedByUserId, Is.EqualTo(specificUserId));
+        }
+    }
+
+    [Test]
+    public async Task CreateAgent_ReturnsLocationHeader_WithNewAgentId()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(Guid.Empty, "Test Agent", null!, null!, null!, null!, null!);
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+        Assert.That(createdResult.RouteValues, Does.ContainKey("id"));
+        Assert.That(createdResult.RouteValues["id"], Is.EqualTo(createdAgentId.Value));
+    }
+
+    [Test]
+    public async Task CreateAgent_WithCompleteData_PreservesAllFields()
+    {
+        // Arrange
+        var newAgent = new AgentDetail(
+            Guid.Empty,
+            "Complete Agent",
+            "Detailed instructions for the agent",
+            "GitHub Models",
+            "https://models.github.com",
+            "github-api-key-12345",
+            "gpt-4o"
+        )
+        {
+            McpServer = "https://mcp-server.example.com/api"
+        };
+
+        // Act
+        var result = await _controller.CreateAgent(newAgent);
+
+        // Assert
+        var createdResult = result as CreatedAtActionResult;
+        Assert.That(createdResult, Is.Not.Null);
+        var createdAgentId = createdResult.Value as Guid?;
+        Assert.That(createdAgentId, Is.Not.Null);
+
+        // Verify agent was saved with all fields preserved
+        var savedAgent = await _context.Agents.FindAsync(createdAgentId.Value);
+        Assert.That(savedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(savedAgent.Name, Is.EqualTo("Complete Agent"));
+            Assert.That(savedAgent.Instructions, Is.EqualTo("Detailed instructions for the agent"));
+            Assert.That(savedAgent.ProviderName, Is.EqualTo("GitHub Models"));
+            Assert.That(savedAgent.ProviderEndpoint, Is.EqualTo("https://models.github.com"));
+            Assert.That(savedAgent.ProviderApiKey, Is.EqualTo("github-api-key-12345"));
+            Assert.That(savedAgent.ProviderModelName, Is.EqualTo("gpt-4o"));
+            Assert.That(savedAgent.McpServer, Is.EqualTo("https://mcp-server.example.com/api"));
+        }
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_WhenAgentExists_UpdatesPublishStatus()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        var agent = await _context.Agents.FindAsync(agentId);
+        Assert.That(agent, Is.Not.Null);
+        Assert.That(agent.IsPublished, Is.False); // Initially false
+        var originalTimestamp = agent.UpdatedAt;
+
+        // Wait to ensure timestamp difference (100ms for CI reliability)
+        await Task.Delay(100);
+
+        // Act
+        var result = await _controller.UpdateAgentPublishStatus(agentId, true);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+
+        // Verify the agent was updated in the database
+        var updatedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(updatedAgent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updatedAgent.IsPublished, Is.True);
+            Assert.That(updatedAgent.UpdatedByUserId, Is.EqualTo(_testAdminUserId));
+            Assert.That(updatedAgent.UpdatedAt, Is.GreaterThan(originalTimestamp));
+        }
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_WhenPublishing_ReturnsCorrectMessage()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+
+        // Act
+        var result = await _controller.UpdateAgentPublishStatus(agentId, true);
+
+        // Assert
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var response = okResult.Value;
+        Assert.That(response, Is.Not.Null);
+
+        var messageProperty = response.GetType().GetProperty("message");
+        var isPublishedProperty = response.GetType().GetProperty("isPublished");
+        
+        Assert.That(messageProperty, Is.Not.Null);
+        Assert.That(isPublishedProperty, Is.Not.Null);
+        
+        var message = messageProperty.GetValue(response) as string;
+        var isPublished = (bool)isPublishedProperty.GetValue(response)!;
+        
+        Assert.That(message, Does.Contain("successfully published"));
+        Assert.That(isPublished, Is.True);
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_WhenUnpublishing_ReturnsCorrectMessage()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        // First publish it
+        await _controller.UpdateAgentPublishStatus(agentId, true);
+
+        // Act - Now unpublish
+        var result = await _controller.UpdateAgentPublishStatus(agentId, false);
+
+        // Assert
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var response = okResult.Value;
+        Assert.That(response, Is.Not.Null);
+
+        var messageProperty = response.GetType().GetProperty("message");
+        var isPublishedProperty = response.GetType().GetProperty("isPublished");
+        
+        var message = messageProperty!.GetValue(response) as string;
+        var isPublished = (bool)isPublishedProperty!.GetValue(response)!;
+        
+        Assert.That(message, Does.Contain("successfully unpublished"));
+        Assert.That(isPublished, Is.False);
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_WhenAgentDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        var nonExistentId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.UpdateAgentPublishStatus(nonExistentId, true);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundObjectResult>());
+        var notFoundResult = result as NotFoundObjectResult;
+        Assert.That(notFoundResult, Is.Not.Null);
+        Assert.That(notFoundResult.Value, Does.Contain(nonExistentId.ToString()));
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_WhenUserIsNotAuthenticated_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var unauthenticatedController = new AgentAdminController(_context, _mockAgentFactory.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal() }
+            }
+        };
+        var agentId = await SeedSingleAgentData();
+
+        // Act & Assert
+        Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
+            await unauthenticatedController.UpdateAgentPublishStatus(agentId, true));
+    }
+
+    [Test]
+    public async Task UpdateAgentPublishStatus_UpdatesTimestamp()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        var originalAgent = await _context.Agents.FindAsync(agentId);
+        var originalTimestamp = originalAgent!.UpdatedAt;
+
+        // Wait to ensure timestamp difference (100ms for CI reliability)
+        await Task.Delay(100);
+
+        // Act
+        await _controller.UpdateAgentPublishStatus(agentId, true);
+
+        // Assert
+        var updatedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(updatedAgent!.UpdatedAt, Is.GreaterThan(originalTimestamp));
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenAgentExists_DeletesSuccessfully()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+
+        // Act
+        var result = await _controller.DeleteAgent(agentId);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+
+        // Verify the agent was deleted from the database
+        var deletedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(deletedAgent, Is.Null);
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenAgentDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        var nonExistentId = Guid.NewGuid();
+
+        // Act
+        var result = await _controller.DeleteAgent(nonExistentId);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenAgentIsDefault_ReturnsBadRequest()
+    {
+        // Arrange
+        var defaultAgent = new AgentModel
+        {
+            Id = Guid.NewGuid(),
+            Name = "Default Agent",
+            Instructions = "Default instructions",
+            OwnerUserId = _testUserId,
+            UpdatedByUserId = _testUserId,
+            IsDefault = true
+        };
+        await _context.Agents.AddAsync(defaultAgent);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.DeleteAgent(defaultAgent.Id);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+        var badRequestResult = result as BadRequestObjectResult;
+        Assert.That(badRequestResult, Is.Not.Null);
+        Assert.That(badRequestResult.Value, Is.EqualTo("Default agent cannot be deleted."));
+
+        // Verify agent still exists
+        var agent = await _context.Agents.FindAsync(defaultAgent.Id);
+        Assert.That(agent, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenAgentHasAssociatedDocuments_ReturnsBadRequest()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        
+        // Add a document associated with the agent
+        var document = new AskHR.Orchestrator.Models.Documents.Document
+        {
+            Id = Guid.NewGuid(),
+            AgentId = agentId,
+            Name = "Test Document",
+            Url = "https://example.com/test.pdf",
+            CreatedByUserId = _testUserId,
+            UpdatedByUserId = _testUserId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        await _context.Documents.AddAsync(document);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.DeleteAgent(agentId);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+        var badRequestResult = result as BadRequestObjectResult;
+        Assert.That(badRequestResult, Is.Not.Null);
+        Assert.That(badRequestResult.Value, Does.Contain("associated with documents"));
+
+        // Verify agent still exists
+        var agent = await _context.Agents.FindAsync(agentId);
+        Assert.That(agent, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenAgentHasNoDocuments_DeletesSuccessfully()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+
+        // Verify no documents exist for this agent
+        var hasDocuments = await _context.Documents.AnyAsync(d => d.AgentId == agentId);
+        Assert.That(hasDocuments, Is.False);
+
+        // Act
+        var result = await _controller.DeleteAgent(agentId);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+
+        // Verify the agent was deleted
+        var deletedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(deletedAgent, Is.Null);
+    }
+
+    [Test]
+    public async Task DeleteAgent_WhenNonDefaultAgentWithNoDocuments_AllowsDeletion()
+    {
+        // Arrange
+        var agent = new AgentModel
+        {
+            Id = Guid.NewGuid(),
+            Name = "Non-Default Agent",
+            Instructions = "Instructions",
+            OwnerUserId = _testUserId,
+            UpdatedByUserId = _testUserId,
+            IsDefault = false
+        };
+        await _context.Agents.AddAsync(agent);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.DeleteAgent(agent.Id);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+
+        // Verify deletion
+        var deletedAgent = await _context.Agents.FindAsync(agent.Id);
+        Assert.That(deletedAgent, Is.Null);
+    }
+
+    [Test]
+    public async Task DeleteAgent_DeletesOnlySpecifiedAgent()
+    {
+        // Arrange
+        await SeedAgentsData(); // Creates 2 agents
+        var agentToDelete = await _context.Agents.FirstAsync();
+        var agentToKeep = await _context.Agents.Where(a => a.Id != agentToDelete.Id).FirstAsync();
+
+        // Act
+        var result = await _controller.DeleteAgent(agentToDelete.Id);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+
+        // Verify only the specified agent was deleted
+        var deletedAgent = await _context.Agents.FindAsync(agentToDelete.Id);
+        var remainingAgent = await _context.Agents.FindAsync(agentToKeep.Id);
+        
+        Assert.That(deletedAgent, Is.Null);
+        Assert.That(remainingAgent, Is.Not.Null);
+    }
+
+    private async Task SeedAgentsData()
+    {
+        var ownerUser = new User
+        {
+            Id = _testUserId,
+            UserName = "testowner",
+            Email = "owner@test.com"
+        };
+        var updaterUser = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = "testupdater",
+            Email = "updater@test.com"
+        };
+        await _context.Users.AddRangeAsync(ownerUser, updaterUser);
+        var agents = new List<AgentModel>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Test Agent 1",
+                Instructions = "Test instructions 1",
+                OwnerUserId = ownerUser.Id,
+                UpdatedByUserId = updaterUser.Id,
+                CreatedAt = DateTime.UtcNow.AddDays(-2),
+                UpdatedAt = DateTime.UtcNow.AddDays(-1)
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Test Agent 2",
+                Instructions = "Test instructions 2",
+                OwnerUserId = ownerUser.Id,
+                UpdatedByUserId = updaterUser.Id,
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                UpdatedAt = DateTime.UtcNow
+            }
+        };
+        await _context.Agents.AddRangeAsync(agents);
+        await _context.SaveChangesAsync();
+    }
+    private async Task<Guid> SeedSingleAgentData()
+    {
+        var ownerUser = new User
+        {
+            Id = _testUserId,
+            UserName = "testowner",
+            Email = "owner@test.com"
+        };
+        var updaterUser = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = "testupdater",
+            Email = "updater@test.com"
+        };
+        await _context.Users.AddRangeAsync(ownerUser, updaterUser);
+        var agentId = Guid.NewGuid();
+        var agent = new AgentModel
+        {
+            Id = agentId,
+            Name = "Single Test Agent",
+            Instructions = "Test instructions for single agent",
+            OwnerUserId = ownerUser.Id,
+            UpdatedByUserId = updaterUser.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow
+        };
+        await _context.Agents.AddAsync(agent);
+        await _context.SaveChangesAsync();
+        return agentId;
+    }
+    private async Task SeedLargeAgentsData(int count)
+    {
+        var ownerUser = new User
+        {
+            Id = _testUserId,
+            UserName = "testowner",
+            Email = "owner@test.com"
+        };
+        var updaterUser = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = "testupdater",
+            Email = "updater@test.com"
+        };
+        await _context.Users.AddRangeAsync(ownerUser, updaterUser);
+        var agents = new List<AgentModel>();
+        for (int i = 1; i <= count; i++)
+        {
+            agents.Add(new AgentModel
+            {
+                Id = Guid.NewGuid(),
+                Name = $"Test Agent {i}",
+                Instructions = $"Test instructions {i}",
+                OwnerUserId = ownerUser.Id,
+                UpdatedByUserId = updaterUser.Id,
+                CreatedAt = DateTime.UtcNow.AddDays(-i),
+                UpdatedAt = DateTime.UtcNow.AddDays(-i + 1)
+            });
+        }
+        await _context.Agents.AddRangeAsync(agents);
+        await _context.SaveChangesAsync();
+    }
+
+    #region Agent Mode Tests
+
+    [Test]
+    public async Task UpdateAgent_WhenModeFast_PersistsFastMode()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        var updatedAgent = new AgentDetail(agentId, "Single Test Agent", null, null, null, null, null)
+        {
+            Mode = AgentMode.Fast
+        };
+
+        // Act
+        var result = await _controller.UpdateAgent(agentId, updatedAgent);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+        var savedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(savedAgent, Is.Not.Null);
+        Assert.That(savedAgent.Mode, Is.EqualTo(AgentMode.Fast));
+    }
+
+    [Test]
+    public async Task UpdateAgent_WhenModeThinking_PersistsThinkingMode()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+        var updatedAgent = new AgentDetail(agentId, "Single Test Agent", null, null, null, null, null)
+        {
+            Mode = AgentMode.Thinking
+        };
+
+        // Act
+        var result = await _controller.UpdateAgent(agentId, updatedAgent);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NoContentResult>());
+        var savedAgent = await _context.Agents.FindAsync(agentId);
+        Assert.That(savedAgent, Is.Not.Null);
+        Assert.That(savedAgent.Mode, Is.EqualTo(AgentMode.Thinking));
+    }
+
+    [Test]
+    public async Task GetAgentById_ReturnsMode_InAgentDetail()
+    {
+        // Arrange
+        var ownerUser = new User { Id = _testUserId, UserName = "owner", Email = "owner@test.com" };
+        await _context.Users.AddAsync(ownerUser);
+        var agentId = Guid.NewGuid();
+        var agent = new AgentModel
+        {
+            Id = agentId,
+            Name = "Thinking Agent",
+            Instructions = "Think first",
+            Mode = AgentMode.Thinking,
+            OwnerUserId = _testUserId,
+            UpdatedByUserId = _testUserId
+        };
+        await _context.Agents.AddAsync(agent);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.GetAgentById(agentId);
+
+        // Assert
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var detail = okResult.Value as AgentDetail;
+        Assert.That(detail, Is.Not.Null);
+        Assert.That(detail.Mode, Is.EqualTo(AgentMode.Thinking));
+    }
+
+    [Test]
+    public async Task GetAgentById_DefaultMode_IsFast()
+    {
+        // Arrange
+        var agentId = await SeedSingleAgentData();
+
+        // Act
+        var result = await _controller.GetAgentById(agentId);
+
+        // Assert
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var detail = okResult.Value as AgentDetail;
+        Assert.That(detail, Is.Not.Null);
+        Assert.That(detail.Mode, Is.EqualTo(AgentMode.Fast));
+    }
+
+    #endregion
+}

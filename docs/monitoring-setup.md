@@ -1,4 +1,4 @@
-# NTG Agent - Monitoring & Logging Setup
+# AskHR - Monitoring & Logging Setup
 
 ## 🎯 Overview
 
@@ -47,7 +47,7 @@
       "Default": "Debug",
       "Microsoft.AspNetCore": "Information",
       "Microsoft.EntityFrameworkCore": "Information",
-      "NTG.Agent": "Debug"
+      "AskHR": "Debug"
     },
     "Console": {
       "FormatterName": "simple",
@@ -156,7 +156,7 @@ app.MapDefaultEndpoints(); // Adds exception handling and logging middleware
 
 ## 🔄 Available Components
 
-### **Logging Components (NTG.Agent.ServiceDefaults.Logging)**
+### **Logging Components (AskHR.ServiceDefaults.Logging)**
 - `IApplicationLogger<T>` - Enhanced logger with business methods
 - `ApplicationLogger<T>` - Implementation with LogUserAction, LogBusinessEvent, etc.
 - `IMetricsCollector` - Custom metrics collection interface

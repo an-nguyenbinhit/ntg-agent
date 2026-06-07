@@ -1,8 +1,8 @@
 ---
-description: GitHub Copilot Instructions for NTG Agent
+description: GitHub Copilot Instructions for AskHR
 ---
 
-# GitHub Copilot Instructions for NTG Agent
+# GitHub Copilot Instructions for AskHR
 
 ## AI Persona
 
@@ -34,7 +34,7 @@ You are an experienced Senior .NET Developer. You always adhere to SOLID princip
 
 ### File Organization
 - Place models in `Models/` folders organized by domain (e.g., `Models/Chat/`, `Models/Documents/`)
-- Put DTOs in `NTG.Agent.Shared.Dtos` project organized by feature
+- Put DTOs in `AskHR.Shared.Dtos` project organized by feature
 - Store services in `Services/` folders with clear interface/implementation separation
 - Place Blazor components in `Components/` with subfolder organization
 - Use `_Imports.razor` files for common using statements
@@ -76,7 +76,7 @@ public class ExampleEntity
 
 ### Component Structure
 ```razor
-@using NTG.Agent.Shared.Dtos.SomeNamespace
+@using AskHR.Shared.Dtos.SomeNamespace
 @inject SomeService SomeService
 @inject ILogger<ComponentName> Logger
 @rendermode InteractiveServer
@@ -230,8 +230,8 @@ catch (Exception ex)
 
 ### Adding Migrations
 ```bash
-dotnet ef migrations add MigrationName --project NTG.Agent.Orchestrator
-dotnet ef database update --project NTG.Agent.Orchestrator
+dotnet ef migrations add MigrationName --project AskHR.Orchestrator
+dotnet ef database update --project AskHR.Orchestrator
 ```
 
 ### Migration Guidelines

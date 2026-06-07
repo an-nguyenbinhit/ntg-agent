@@ -1,6 +1,6 @@
-# Tài liệu Yêu cầu — NTG Agent (Enterprise RAG Chatbot)
+# Tài liệu Yêu cầu — AskHR (Enterprise RAG Chatbot)
 
-> **Scope:** Đây là current-state/gap document cho codebase NTG Agent hiện tại, không phải AI-DLC source-of-truth. Requirement source-of-truth cho AskHR nằm tại `aidlc-docs/requirements.md`.
+> **Scope:** Đây là current-state/gap document cho codebase AskHR hiện tại, không phải AI-DLC source-of-truth. Requirement source-of-truth cho AskHR nằm tại `aidlc-docs/requirements.md`.
 >
 > Tài liệu mô tả yêu cầu chức năng cho nền tảng chatbot doanh nghiệp dựa trên RAG.
 > Mỗi yêu cầu được gắn trạng thái triển khai hiện tại để theo dõi tiến độ và khoảng trống (gap).
@@ -22,7 +22,7 @@ Biến tài liệu thô thành kiến thức mà AI có thể truy vấn.
 
 | ID | Yêu cầu | Trạng thái | Ghi chú triển khai |
 |---|---|---|---|
-| FR-1.1 | Tải lên tài liệu chính sách, quy định, hợp đồng (đa định dạng) | ✅ Đã có | `DocumentsController`, dịch vụ `NTG.Agent.Knowledge` |
+| FR-1.1 | Tải lên tài liệu chính sách, quy định, hợp đồng (đa định dạng) | ✅ Đã có | `DocumentsController`, dịch vụ `AskHR.Knowledge` |
 | FR-1.2 | Phân tích cấu trúc tài liệu (tiêu đề, đoạn văn, bảng biểu) | ✅ Đã có | `DocumentAnalysisService` (Azure Document Intelligence: OCR, bảng, selection marks) + pipeline Kernel Memory |
 | FR-1.3 | Phân mảnh ngữ nghĩa (Chunking) tài liệu dài | ✅ Đã có | Pipeline handlers của Kernel Memory |
 | FR-1.4 | Mã hóa văn bản thành vector và lưu vào kho kiến thức | ✅ Đã có | Embedding + vector store qua Kernel Memory |

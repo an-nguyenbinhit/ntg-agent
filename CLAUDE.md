@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NTG Agent is a .NET 10 AI chatbot application built with:
+AskHR is a .NET 10 AI chatbot application built with:
 - **.NET Aspire** for distributed application orchestration
 - **Blazor** (WebAssembly and Server) for web interfaces
 - **Microsoft Agent Framework** for AI agent capabilities
@@ -27,45 +27,45 @@ dotnet build --configuration Release
 dotnet test --configuration Release --collect:"XPlat Code Coverage"
 
 # Run specific test project
-dotnet test tests/NTG.Agent.Orchestrator.Tests
+dotnet test tests/AskHR.Orchestrator.Tests
 ```
 
 ### Database Migrations
 ```bash
 # Add migration for Orchestrator (required for new entity changes)
-dotnet ef migrations add MigrationName --project NTG.Agent.Orchestrator
+dotnet ef migrations add MigrationName --project AskHR.Orchestrator
 
 # Update Orchestrator database
-dotnet ef database update --project NTG.Agent.Orchestrator
+dotnet ef database update --project AskHR.Orchestrator
 
 # Add migration for Admin (if Admin entities changed)
-dotnet ef migrations add MigrationName --project NTG.Agent.Admin/NTG.Agent.Admin
+dotnet ef migrations add MigrationName --project AskHR.Admin/AskHR.Admin
 
 # Update Admin database
-dotnet ef database update --project NTG.Agent.Admin/NTG.Agent.Admin
+dotnet ef database update --project AskHR.Admin/AskHR.Admin
 ```
 
 ### Running the Application
 ```bash
 # Run the Aspire AppHost (starts all services)
-dotnet run --project NTG.Agent.AppHost
+dotnet run --project AskHR.AppHost
 ```
 
 This launches the Aspire Dashboard with:
-- **NTG.Agent.WebClient**: End-user chat interface
-- **NTG.Agent.Admin**: Admin portal (default: admin@ntgagent.com / Ntg@123)
-- **NTG.Agent.Orchestrator**: Backend API
-- **NTG.Agent.Knowledge**: Document ingestion and RAG service
-- **NTG.Agent.MCP.Server**: MCP server for AI tools
+- **AskHR.WebClient**: End-user chat interface
+- **AskHR.Admin**: Admin portal (default: admin@askhr.com / AskHR@123)
+- **AskHR.Orchestrator**: Backend API
+- **AskHR.Knowledge**: Document ingestion and RAG service
+- **AskHR.MCP.Server**: MCP server for AI tools
 
 ### Secrets Management
 ```bash
 # Set GitHub Models token for Knowledge service
-dotnet user-secrets set "KernelMemory:Services:OpenAI:APIKey" "<token>" --project NTG.Agent.Knowledge
+dotnet user-secrets set "KernelMemory:Services:OpenAI:APIKey" "<token>" --project AskHR.Knowledge
 
 # Set Google Search credentials for MCP.Server
-dotnet user-secrets set "Google:ApiKey" "<key>" --project NTG.Agent.MCP.Server
-dotnet user-secrets set "Google:SearchEngineId" "<id>" --project NTG.Agent.MCP.Server
+dotnet user-secrets set "Google:ApiKey" "<key>" --project AskHR.MCP.Server
+dotnet user-secrets set "Google:SearchEngineId" "<id>" --project AskHR.MCP.Server
 ```
 
 ## Architecture
@@ -87,7 +87,7 @@ AppHost (Aspire Orchestrator)
 
 ### Key Projects
 
-**NTG.Agent.Orchestrator** - Backend API
+**AskHR.Orchestrator** - Backend API
 - **Controllers/**: REST API endpoints
 - **Services/Agents/**: Agent service, factory, and orchestration
 - **Services/Knowledge/**: RAG integration with Kernel Memory
@@ -97,31 +97,31 @@ AppHost (Aspire Orchestrator)
 - **Models/**: Domain entities (Agents, Chat, Documents, Tags, Identity, TokenUsage, UserPreferences)
 - **Plugins/**: Semantic Kernel plugins for agent capabilities
 
-**NTG.Agent.Knowledge** - Document Ingestion Service
+**AskHR.Knowledge** - Document Ingestion Service
 - Uses Kernel Memory for document processing, embedding generation, and vector search
 - Configured via extensive appsettings.json (embeddings, storage, ingestion pipeline)
 - Provides API for document upload and semantic search
 
-**NTG.Agent.MCP.Server** - MCP Tool Server
+**AskHR.MCP.Server** - MCP Tool Server
 - Exposes tools to AI agents via Model Context Protocol
 - **McpTools/**: Individual MCP tool implementations
 - **Services/**: Supporting services for tools
 
-**NTG.Agent.Admin** - Admin Portal
+**AskHR.Admin** - Admin Portal
 - Blazor server/WASM hybrid with YARP reverse proxy for BFF pattern
 - Manages agents, documents, folders, users, and configuration
 
-**NTG.Agent.WebClient** - End-User Interface
+**AskHR.WebClient** - End-User Interface
 - Blazor WebAssembly for chat interface
 - Real-time streaming chat responses
 
-**NTG.Agent.Common** - Shared Library
+**AskHR.Common** - Shared Library
 - **Dtos/**: Shared data transfer objects across all projects
 - Organized by domain: Agents, Chats, Documents, TokenUsage, etc.
 
 **AITools/** - Agent Tool Plugins
-- **NTG.Agent.AITools.SimpleTools**: Basic tool implementations
-- **NTG.Agent.AITools.SearchOnlineTool**: Web search and scraping tools
+- **AskHR.AITools.SimpleTools**: Basic tool implementations
+- **AskHR.AITools.SearchOnlineTool**: Web search and scraping tools
 
 ### Data Models
 
@@ -225,27 +225,27 @@ public class ExampleEntity
 ## Common Tasks
 
 ### Adding a New Entity
-1. Create model class in `NTG.Agent.Orchestrator/Models/<Domain>/`
+1. Create model class in `AskHR.Orchestrator/Models/<Domain>/`
 2. Add `DbSet<T>` to `AgentDbContext`
 3. Configure relationships in `OnModelCreating()` if needed
-4. Run `dotnet ef migrations add AddEntity --project NTG.Agent.Orchestrator`
-5. Apply migration: `dotnet ef database update --project NTG.Agent.Orchestrator`
+4. Run `dotnet ef migrations add AddEntity --project AskHR.Orchestrator`
+5. Apply migration: `dotnet ef database update --project AskHR.Orchestrator`
 
 ### Adding a New API Endpoint
-1. Create controller in `NTG.Agent.Orchestrator/Controllers/`
+1. Create controller in `AskHR.Orchestrator/Controllers/`
 2. Use `[ApiController]` and `[Route("api/[controller]")]`
 3. Inject required services via constructor
 4. Use async methods and proper error handling
-5. Create DTOs in `NTG.Agent.Common/Dtos/<Feature>/`
+5. Create DTOs in `AskHR.Common/Dtos/<Feature>/`
 
 ### Adding a New MCP Tool
-1. Create tool class in `NTG.Agent.MCP.Server/McpTools/`
+1. Create tool class in `AskHR.MCP.Server/McpTools/`
 2. Use `[McpTool]` attribute and implement tool method
 3. Tool automatically registered via `WithToolsFromAssembly()`
 4. Reference tool in Admin portal when configuring agents
 
 ### Adding a New Agent Plugin
-1. Create plugin class in `NTG.Agent.Orchestrator/Plugins/`
+1. Create plugin class in `AskHR.Orchestrator/Plugins/`
 2. Use Semantic Kernel plugin patterns
 3. Register in `AgentFactory.CreateAgent()`
 4. Document tool in agent instructions for LLM awareness

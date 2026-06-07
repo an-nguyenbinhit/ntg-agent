@@ -1,0 +1,108 @@
+@using AskHR.Common.Dtos.Chats
+@using AskHR.Common.Dtos.Enums
+@using AskHR.Common.Dtos.SharedConversations
+@inject IJSRuntime JSRuntime
+@inject SharedConversationClient SharedConversationClient
+<div class="chat-container">
+    @if (isLoading)
+    {
+        <div class="p-3 text-muted">Loading…</div>
+    }
+    else if (!loadSuccess)
+    {
+        <div class="alert alert-warning m-2" role="alert">
+            @errorMessage
+        </div>
+    }
+    else if (chatHistory.Count == 0)
+    {
+        <div class="p-3 text-muted">No messages in this shared conversation/chat.</div>
+    }
+    else
+    {
+        @foreach (var item in chatHistory)
+        {
+            if (item.IsAssistant)
+            {
+                <div class="p-2 w-100">
+                    <EnhancedMarkdown Value="@item.Message" CssClass="p-2 rounded rounded-4 border chat-response"></EnhancedMarkdown>
+                </div>
+            }
+            else if(item.IsUser)
+            {
+                <div class="text-end p-2 w-100">
+                    <span class="text-white bg-primary p-2 rounded rounded-4">
+                        @item.Message
+                    </span>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid SharedConversationId { get; set; }
+
+    private bool isLoading = true;
+    private bool loadSuccess = false;
+    private string? errorMessage;
+
+    private List<ChatMessageItem> chatHistory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("hideMobileHeader");
+
+            var result = await SharedConversationClient.GetPublicSharedConversationAsync(SharedConversationId);
+
+            if (result.Success)
+            {
+                foreach (var item in result.Messages!)
+                {
+                    var chatMessage = new ChatMessageItem
+                        {
+                            IsAssistant = item.Role == "assistant",
+                            IsUser = item.Role == "user",
+                            Message = item.Content
+                        };
+                    chatHistory.Add(chatMessage);
+                }
+
+                loadSuccess = true;
+            }
+            else
+            {
+                errorMessage = result.Reason switch
+                {
+                    "NOT_FOUND" => "This shared conversation/chat was not found.",
+                    "INACTIVE" => "This shared conversation/chat is no longer active.",
+                    "EXPIRED" => "This shared conversation/chat has expired.",
+                    _ => "Unable to load this shared conversation/chat."
+                };
+                loadSuccess = false;
+            }
+        }
+        catch (Exception)
+        {
+            errorMessage = "An unexpected error occurred while loading the shared conversation/chat.";
+            loadSuccess = false;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.Delay(2000);
+            await JSRuntime.InvokeVoidAsync("beautifyCodeBlocks");
+            await JSRuntime.InvokeVoidAsync("highlightCodeBlocks");
+        }
+    }
+}

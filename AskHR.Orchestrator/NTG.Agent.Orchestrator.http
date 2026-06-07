@@ -1,0 +1,6 @@
+@AskHR.Orchestrator_HostAddress = http://localhost:5068
+
+GET {{AskHR.Orchestrator_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
