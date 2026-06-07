@@ -1,0 +1,16 @@
+{
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "alwaysUpdateLinks": true,
+  "newFileLocation": "folder",
+  "newFileFolderPath": "docs",
+  "attachmentFolderPath": "attachments",
+  "showUnsupportedFiles": false,
+  "showFrontmatter": true,
+  "userIgnoreFilters": [
+    "aidlc-rule-details/",
+    "templates/",
+    ".aidlc/",
+    "attachments/"
+  ]
+}
