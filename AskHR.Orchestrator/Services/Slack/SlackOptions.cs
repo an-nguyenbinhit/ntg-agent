@@ -11,4 +11,6 @@ public sealed class SlackOptions
     public int EventDeduplicationMinutes { get; init; } = 10;
 
     public Guid? DefaultAgentId { get; init; }
+
+    public int PipelineTimeoutSeconds { get; init; } = 25;
 }

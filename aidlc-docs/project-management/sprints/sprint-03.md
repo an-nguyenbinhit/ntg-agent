@@ -35,7 +35,6 @@ updated: 2026-06-07
 - [ ] **S-0602** User gửi feedback (👍/👎) trên câu trả lời · [[units-governance-ops#UoB-06: Feedback, Audit & Analytics]]
 - [ ] **S-0603** Phân loại severity P1/P2/P3 và routing escalation · [[units-governance-ops#UoB-06: Feedback, Audit & Analytics]]
 - [ ] **S-0104** Câu nhạy cảm/vượt thẩm quyền: freeze + warm handoff cho HR · [[units-retrieval-answer#UoB-01: Answer Policy Question]] · [[TASK-0104-sensitive-handoff]]
-- [ ] **S-0302** Loading state và error UX khi pipeline lỗi/timeout (Slack) · [[units-channels#UoB-03: Slack Mention & Thread Context]]
 
 ### In Progress
 _(trống)_
@@ -44,7 +43,7 @@ _(trống)_
 _(trống)_
 
 ### Done
-_(trống)_
+- [x] **S-0302** Loading state và error UX khi pipeline lỗi/timeout (Slack) · [[units-channels#UoB-03: Slack Mention & Thread Context]]
 
 ## Status Reconciliation
 
@@ -53,6 +52,7 @@ _(trống)_
 - 2026-06-08: S-0801 true token streaming implemented. `IModelGateway` streams model chunks, `PolicyAnswerService` streams citation/token/done events, and WebClient consumes `/api/answers/stream` for text-only AskHR chat.
 - 2026-06-08: S-0802/S-0602 implemented for AskHR web stream using existing SQL-backed `Conversation`/`ChatMessages` and existing reaction/comment endpoints. Final stream `done` returns `MessageId` so feedback buttons bind to the persisted assistant message.
 - 2026-06-08: S-0603/S-0104 implemented for Sprint 03 scope with static rule-based severity and warm handoff audit packaging. Sensitive conversations are frozen by persisted handoff assistant messages; no external notification integration is included.
+- 2026-06-08: S-0302 implemented. To respect Slack's ~3s Events API ack window, `SlackController.EventsAsync` now acks immediately ("processing") and dispatches the rest — identity resolution, the "Đang xử lý..." `chat.postMessage`, the answer pipeline, and the final `chat.update` — to a detached background task running in its own DI scope (`IServiceScopeFactory`) with a `PipelineTimeoutSeconds`-bounded `CancellationTokenSource` independent of `HttpContext.RequestAborted`. On timeout or pipeline failure the status message is replaced with a Vietnamese error/timeout notice instead of the answer.
 
 ## Daily Log
 
