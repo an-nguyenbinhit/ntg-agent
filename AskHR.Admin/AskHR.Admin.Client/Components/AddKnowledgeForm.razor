@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Forms
+@using AskHR.Common.Dtos.Documents
 @using AskHR.Common.Dtos.Services
 @using AskHR.Common.Dtos.Tags
 @using AskHR.Common.Dtos.Upload
@@ -88,6 +89,38 @@
                     <small><i class="bi bi-exclamation-triangle me-1"></i>Please select at least one tag for the document.</small>
                 </div>
             }
+        </div>
+
+        <!-- Permission Metadata Section -->
+        <div class="mb-4">
+            <h6 class="mb-3">
+                <i class="bi bi-shield-lock me-2"></i>Access Metadata
+            </h6>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Allowed roles</label>
+                    <input type="text"
+                           class="form-control"
+                           placeholder="Employee, Manager"
+                           @bind="rolesInput" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Business units</label>
+                    <input type="text"
+                           class="form-control"
+                           placeholder="Vietnam, Global HR"
+                           @bind="businessUnitsInput" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Sensitivity</label>
+                    <select class="form-select" @bind="sensitivityLevel">
+                        <option value="Public">Public</option>
+                        <option value="Internal">Internal</option>
+                        <option value="Confidential">Confidential</option>
+                    </select>
+                    <div class="form-text">Leaving Sensitivity empty through API or metadata import means unrestricted; documents tagged public can be visible to anonymous users.</div>
+                </div>
+            </div>
         </div>
 
         <!-- Upload Section -->
@@ -219,6 +252,9 @@
     private string urlInput = string.Empty;
     private string textContent = string.Empty;
     private string textTitle = string.Empty;
+    private string rolesInput = string.Empty;
+    private string businessUnitsInput = string.Empty;
+    private string sensitivityLevel = "Internal";
     private string generalMessage = string.Empty;
     private bool isError = false;
     private bool isUploading = false;
@@ -335,6 +371,25 @@
         return selectedTags.Select(t => t.Id.ToString()).ToList();
     }
 
+    private DocumentPermissionMetadata BuildPermissionMetadata()
+    {
+        return new DocumentPermissionMetadata
+        {
+            Roles = SplitCsv(rolesInput),
+            BusinessUnits = SplitCsv(businessUnitsInput),
+            SensitivityLevel = sensitivityLevel
+        };
+    }
+
+    private static List<string> SplitCsv(string value)
+    {
+        return value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
         // Validate tags are selected
@@ -376,7 +431,7 @@
                     
                     // Use selected tags
                     var tagIds = GetSelectedTagIds();
-                    await DocumentClient.UploadDocumentsAsync(AgentId, new List<IBrowserFile> { file }, FolderId, tagIds);
+                    await DocumentClient.UploadDocumentsAsync(AgentId, new List<IBrowserFile> { file }, FolderId, tagIds, BuildPermissionMetadata());
 
                     uploadItem.Status = UploadStatus.Success;
                     uploadItem.Message = "Successfully uploaded";
@@ -435,7 +490,7 @@
         try
         {
             var tagIds = GetSelectedTagIds();
-            await DocumentClient.ImportWebPageAsync(AgentId, urlInput, FolderId, tagIds);
+            await DocumentClient.ImportWebPageAsync(AgentId, urlInput, FolderId, tagIds, BuildPermissionMetadata());
 
             uploadItem.Status = UploadStatus.Success;
             uploadItem.Message = "Successfully processed URL content";
@@ -492,7 +547,7 @@
             StateHasChanged();
 
             var tagIds = GetSelectedTagIds();
-            await DocumentClient.UploadTextContentAsync(AgentId, title, textContent, FolderId, tagIds);
+            await DocumentClient.UploadTextContentAsync(AgentId, title, textContent, FolderId, tagIds, BuildPermissionMetadata());
 
             uploadItem.Status = UploadStatus.Success;
             uploadItem.Message = "Successfully added text content";

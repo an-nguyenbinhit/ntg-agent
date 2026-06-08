@@ -103,7 +103,14 @@ public class DocumentsController : ControllerBase
     /// <exception cref="UnauthorizedAccessException">Thrown if the user is not authenticated.</exception>
     [HttpPost("upload/{agentId}")]
     [Authorize]
-    public async Task<IActionResult> UploadDocuments(Guid agentId, [FromForm] IFormFileCollection files, [FromQuery] Guid? folderId, [FromQuery] List<string> tags)
+    public async Task<IActionResult> UploadDocuments(
+        Guid agentId,
+        [FromForm] IFormFileCollection files,
+        [FromQuery] Guid? folderId,
+        [FromQuery] List<string> tags,
+        [FromQuery] List<string>? roles = null,
+        [FromQuery] List<string>? businessUnits = null,
+        [FromQuery] string? sensitivityLevel = null)
     {
         if (files == null || files.Count == 0)
         {
@@ -112,13 +119,21 @@ public class DocumentsController : ControllerBase
 
         var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
 
+        tags ??= [];
+        var permissions = BuildPermissions(tags, new DocumentPermissionMetadata
+        {
+            Roles = roles ?? [],
+            BusinessUnits = businessUnits ?? [],
+            SensitivityLevel = sensitivityLevel
+        });
+
         var documents = new List<Document>();
         var documentTags = new List<DocumentTag>();
         foreach (var file in files)
         {
             if (file.Length > 0)
             {
-                var knowledgeDocId = await _knowledgeService.ImportDocumentAsync(file.OpenReadStream(), file.FileName, agentId, tags);
+                var knowledgeDocId = await _knowledgeService.ImportDocumentAsync(file.OpenReadStream(), file.FileName, agentId, permissions);
                 var document = new Document
                 {
                     Id = Guid.NewGuid(),
@@ -217,7 +232,9 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var documentId = await _knowledgeService.ImportWebPageAsync(request.Url, agentId, request.Tags);
+            var tags = request.Tags ?? [];
+            var permissions = BuildPermissions(tags, request.Permissions);
+            var documentId = await _knowledgeService.ImportWebPageAsync(request.Url, agentId, permissions);
 
             var document = new Document
             {
@@ -235,7 +252,7 @@ public class DocumentsController : ControllerBase
             };
 
             var documentTags = new List<DocumentTag>();
-            foreach (var tag in request.Tags)
+            foreach (var tag in tags)
             {
                 var documentTag = new DocumentTag
                 {
@@ -282,8 +299,10 @@ public class DocumentsController : ControllerBase
 
         try
         {
+            var tags = request.Tags ?? [];
+            var permissions = BuildPermissions(tags, request.Permissions);
             var fileName = string.IsNullOrWhiteSpace(request.Title) ? "Text Content.txt" : $"{request.Title}.txt";
-            var knowledgeDocId = await _knowledgeService.ImportTextContentAsync(request.Content, fileName, agentId, request.Tags);
+            var knowledgeDocId = await _knowledgeService.ImportTextContentAsync(request.Content, fileName, agentId, permissions);
 
             var document = new Document
             {
@@ -300,7 +319,7 @@ public class DocumentsController : ControllerBase
             };
 
             var documentTags = new List<DocumentTag>();
-            foreach (var tag in request.Tags)
+            foreach (var tag in tags)
             {
                 var documentTag = new DocumentTag
                 {
@@ -418,7 +437,12 @@ public class DocumentsController : ControllerBase
 
         return "application/octet-stream";
     }
+
+    private static DocumentPermissionMetadata BuildPermissions(IEnumerable<string>? tags, DocumentPermissionMetadata? permissions)
+    {
+        return (permissions ?? new DocumentPermissionMetadata()).WithAllowedTags(tags);
+    }
 }
 
-public record ImportWebPageRequest(string Url, Guid? FolderId, List<string> Tags);
-public record UploadTextContentRequest(string Title, string Content, Guid? FolderId, List<string> Tags);
+public record ImportWebPageRequest(string Url, Guid? FolderId, List<string>? Tags, DocumentPermissionMetadata? Permissions = null);
+public record UploadTextContentRequest(string Title, string Content, Guid? FolderId, List<string>? Tags, DocumentPermissionMetadata? Permissions = null);

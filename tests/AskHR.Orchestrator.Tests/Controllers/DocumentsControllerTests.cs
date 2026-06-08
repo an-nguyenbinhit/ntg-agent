@@ -226,7 +226,7 @@ public class DocumentsControllerTests
         var tag1Id = Guid.NewGuid();
         var tag2Id = Guid.NewGuid();
         var tags = new List<string> { tag1Id.ToString(), tag2Id.ToString() };
-        _mockKnowledgeService.Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("knowledge-doc-id");
         // Act
         var result = await _controller.UploadDocuments(_testAgentId, files, null, tags);
@@ -250,7 +250,7 @@ public class DocumentsControllerTests
             CreateTestFile("empty.txt", ""),
             CreateTestFile("valid.txt", "valid content")
         };
-        _mockKnowledgeService.Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("knowledge-doc-id");
         // Act
         var result = await _controller.UploadDocuments(_testAgentId, files, null, new List<string>());
@@ -353,7 +353,7 @@ public class DocumentsControllerTests
         var folderId = Guid.NewGuid();
         var tags = new List<string> { Guid.NewGuid().ToString() };
         var request = new ImportWebPageRequest(url, folderId, tags);
-        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(url, _testAgentId, tags, It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("document-id");
         // Act
         var result = await _controller.ImportWebPage(_testAgentId, request);
@@ -373,7 +373,7 @@ public class DocumentsControllerTests
     {
         // Arrange
         var request = new ImportWebPageRequest("https://example.com", null, new List<string>());
-        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Import failed"));
         // Act
         var result = await _controller.ImportWebPage(_testAgentId, request);
@@ -415,7 +415,7 @@ public class DocumentsControllerTests
         var folderId = Guid.NewGuid();
         var tags = new List<string> { Guid.NewGuid().ToString() };
         var request = new UploadTextContentRequest(title, content, folderId, tags);
-        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(content, $"{title}.txt", _testAgentId, tags, It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(content, $"{title}.txt", _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("knowledge-doc-id");
         // Act
         var result = await _controller.UploadTextContent(_testAgentId, request);
@@ -435,7 +435,7 @@ public class DocumentsControllerTests
         // Arrange
         var content = "This is test content";
         var request = new UploadTextContentRequest("", content, null, new List<string>());
-        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(content, "Text Content.txt", _testAgentId, It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(content, "Text Content.txt", _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("knowledge-doc-id");
         // Act
         var result = await _controller.UploadTextContent(_testAgentId, request);
@@ -451,7 +451,7 @@ public class DocumentsControllerTests
     {
         // Arrange
         var request = new UploadTextContentRequest("Title", "Content", null, new List<string>());
-        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockKnowledgeService.Setup(x => x.ImportTextContentAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Import failed"));
         // Act
         var result = await _controller.UploadTextContent(_testAgentId, request);

@@ -11,6 +11,7 @@ using AskHR.Orchestrator.Services.AnonymousSessions;
 using AskHR.Orchestrator.Services.DocumentAnalysis;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.Memory;
+using AskHR.Orchestrator.Services.Security;
 using System.Security.Claims;
 
 namespace AskHR.Orchestrator.Tests.Controllers;
@@ -45,6 +46,7 @@ public class AgentsControllerTests
             Mock.Of<IKnowledgeService>(),
             Mock.Of<IAnonymousSessionService>(),
             Mock.Of<IIpAddressService>(),
+            Mock.Of<IRbacService>(),
             Mock.Of<IHttpContextAccessor>(),
             Mock.Of<IUserMemoryService>(),
             Mock.Of<IDocumentAnalysisService>(),

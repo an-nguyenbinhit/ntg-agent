@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using AskHR.Common.Dtos.Chats;
 using AskHR.Common.Dtos.Constants;
+using AskHR.Common.Dtos.Security;
 using AskHR.Common.Dtos.TokenUsage;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Dtos;
@@ -15,6 +16,7 @@ using AskHR.Orchestrator.Services.AnonymousSessions;
 using AskHR.Orchestrator.Services.DocumentAnalysis;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.Memory;
+using AskHR.Orchestrator.Services.Security;
 using System.Text;
 using ChatRole = Microsoft.Extensions.AI.ChatRole;
 
@@ -27,6 +29,7 @@ public class AgentService
     private readonly IKnowledgeService _knowledgeService;
     private readonly IAnonymousSessionService _anonymousSessionService;
     private readonly IIpAddressService _ipAddressService;
+    private readonly IRbacService _rbacService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IUserMemoryService _memoryService;
     private readonly IDocumentAnalysisService _documentAnalysisService;
@@ -39,6 +42,7 @@ public class AgentService
         IKnowledgeService knowledgeService,
         IAnonymousSessionService anonymousSessionService,
         IIpAddressService ipAddressService,
+        IRbacService rbacService,
         IHttpContextAccessor httpContextAccessor,
         IUserMemoryService memoryService,
         IDocumentAnalysisService documentAnalysisService,
@@ -49,6 +53,7 @@ public class AgentService
         _knowledgeService = knowledgeService;
         _anonymousSessionService = anonymousSessionService;
         _ipAddressService = ipAddressService;
+        _rbacService = rbacService;
         _httpContextAccessor = httpContextAccessor;
         _memoryService = memoryService;
         _logger = logger;
@@ -84,7 +89,7 @@ public class AgentService
         
         var conversation = await ValidateConversation(userId, promptRequest);
         var history = await PrepareConversationHistory(userId, promptRequest.SessionId, promptRequest.AgentId, conversation);
-        var tags = await GetUserTags(userId);
+        var authorization = await _rbacService.ResolveAsync(userId);
         var ocrDocuments = new List<string>();
         if (_documentAnalysisService.IsEnabled && promptRequest.Documents is not null && promptRequest.Documents.Any())
         {
@@ -101,7 +106,7 @@ public class AgentService
             await TrackTokenUsageAsync(userId, promptRequest.SessionId, promptRequest.AgentId, new ConversationListItem(conversation.Id, conversation.Name), null, OperationTypes.GenerateName, nameTokenUsage, DateTime.UtcNow - nameStart);
         }
 
-        // Track text and thinking content separately — thinking is persisted but excluded from AI history
+        // Track text and thinking content separately; thinking is persisted but excluded from AI history.
         var agentMessageSb = new StringBuilder();
         var thinkingMessageSb = new StringBuilder();
         var tokenUsageInfo = new TokenUsageInfo();
@@ -109,7 +114,7 @@ public class AgentService
         DateTime? thinkingStartedAt = null;
         DateTime? thinkingEndedAt = null;
 
-        await foreach (var item in InvokePromptStreamingInternalAsync(promptRequest, history, tags, ocrDocuments, tokenUsageInfo, userId))
+        await foreach (var item in InvokePromptStreamingInternalAsync(promptRequest, history, authorization, ocrDocuments, tokenUsageInfo, userId))
         {
             if (item.ContentType == PromptContentType.Thinking)
             {
@@ -190,28 +195,6 @@ public class AgentService
         return conversation ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
     }
 
-    private async Task<List<string>> GetUserTags(Guid? userId)
-    {
-        if (userId is not null)
-        {
-            var roleIds = await _agentDbContext.UserRoles
-                .Where(c => c.UserId == userId).Select(c => c.RoleId).ToListAsync();
-
-            return await _agentDbContext.TagRoles
-                .Where(c => roleIds.Contains(c.RoleId))
-                .Select(c => c.TagId.ToString())
-                .ToListAsync();
-        }
-        else
-        {
-            var anonymousRoleId = new Guid(Constants.AnonymousRoleId);
-            return await _agentDbContext.TagRoles
-                .Where(c => c.RoleId == anonymousRoleId)
-                .Select(c => c.TagId.ToString())
-                .ToListAsync();
-        }
-    }
-
     private async Task<List<PChatMessage>> PrepareConversationHistory(Guid? userId, string? sessionId, Guid agentId, Conversation conversation)
     {
         var historyMessages = await _agentDbContext.ChatMessages
@@ -270,14 +253,14 @@ public class AgentService
     private async IAsyncEnumerable<PromptResponse> InvokePromptStreamingInternalAsync(
         PromptRequestForm promptRequest,
         List<PChatMessage> history,
-        List<string> tags,
+        AuthorizationContext authorization,
         List<string> ocrDocuments,
         TokenUsageInfo tokenUsageInfo,
         Guid? userId)
     {
         if (promptRequest.AgentId == new Guid("760887e0-babd-41ae-aec1-b6ac3803d348"))
         {
-            await foreach (var response in TestOrchestratorInvokePromptStreamingInternalAsync(promptRequest, history, tags, userId))
+            await foreach (var response in TestOrchestratorInvokePromptStreamingInternalAsync(promptRequest, history, userId))
             {
                 yield return new PromptResponse(response);
             }
@@ -302,7 +285,7 @@ public class AgentService
 
             chatHistory.Add(userMessage);
 
-            AITool memorySearch = new KnowledgePlugin(_knowledgeService, tags, promptRequest.AgentId).AsAITool();
+            AITool memorySearch = new KnowledgePlugin(_knowledgeService, authorization, promptRequest.AgentId).AsAITool();
 
             var chatOptions = new ChatOptions
             {
@@ -345,7 +328,6 @@ public class AgentService
     private async IAsyncEnumerable<string> TestOrchestratorInvokePromptStreamingInternalAsync(
         PromptRequestForm promptRequest,
         List<PChatMessage> history,
-        List<string> tags,
         Guid? userId)
     {
         var triageAgent = await _agentFactory.CreateAgent(promptRequest.AgentId);

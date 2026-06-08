@@ -396,3 +396,11 @@ vậy commit đi
 **Context**: Construction phase — Sprint 01 RBAC retrieval hardening (security-trimmed retrieval, deny-by-default) + knowledge backend observability.
 
 ---
+
+## Construction: AuthorizationContext RBAC Filters + Permission Metadata
+**Timestamp**: 2026-06-07T12:00:00Z
+**User Input**: "Kế hoạch triển khai (Sprint 01 - Tiếp tục)... hoàn thành các công việc còn lại của Sprint 01 — Nền tảng RBAC & Index"
+**AI Response**: "Implemented Sprint 01 continuation on existing code: added shared AuthorizationContext and DocumentPermissionMetadata DTOs; added IIdentityResolver and IRbacService with DB-backed role/tag resolution plus configurable mock BU/sensitivity for Development; changed IKnowledgeService production contract so retrieval uses AuthorizationContext and ingestion receives permission metadata; KernelMemoryKnowledge now writes role/BU/country/legalEntity/sensitivity tags and builds deny-by-default MemoryFilter combinations (OR across values, AND across axes, anonymous forced to public scope); Admin document upload API/client/form now accepts Roles, Business Units, and Sensitivity. Fixed review blocker by stamping `__any__` on unrestricted document axes, adding `__any__` to query axes, stamping `public-all` for the seeded Public tag, replacing Cartesian filters with a single multi-value MemoryFilter, and adding anonymous sensitivity cap (`public`/`__any__`) so anonymous cannot retrieve Internal/Confidential docs via shared tags. Added Admin guidance that blank Sensitivity means unrestricted and public-tagged docs can be visible to anonymous users. Reviewed AskHR.Knowledge handler config and did not change Program.cs. Updated sprint-01: S-0401/S-0202/S-0103 Done. Orchestrator tests pass 240/240."
+**Context**: Construction phase — Sprint 01 RBAC identity + permission metadata + retrieval filtering completion.
+
+---

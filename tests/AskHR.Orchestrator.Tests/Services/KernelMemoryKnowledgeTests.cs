@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.KernelMemory;
 using Moq;
+using AskHR.Common.Dtos.Documents;
+using AskHR.Common.Dtos.Security;
 using AskHR.Orchestrator.Services.Knowledge;
 
 namespace AskHR.Orchestrator.Tests.Services;
@@ -517,6 +519,161 @@ public class KernelMemoryKnowledgeTests
             service.ImportDocumentAsync(content, "policy.docx", Guid.Empty, new List<string>()));
 
         strictMemory.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public void ComposeFilters_WithRoleBusinessUnitAndSensitivity_UsesOrAcrossValuesAndAndAcrossAxes()
+    {
+        var authorization = new AuthorizationContext
+        {
+            Roles = ["Employee", "Manager"],
+            AllowedTags = ["public-all"],
+            BusinessUnits = ["Vietnam"],
+            SensitivityLevel = "Internal"
+        };
+
+        var filters = KernelMemoryKnowledge.ComposeFilters(_testAgentId, authorization);
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(HasTag(filters[0], "agentId", _testAgentId.ToString().ToLowerInvariant()), Is.True);
+        Assert.That(HasTag(filters[0], "tags", "public-all"), Is.True);
+        Assert.That(HasTag(filters[0], "businessUnits", "vietnam"), Is.True);
+        Assert.That(HasTag(filters[0], "businessUnits", "__any__"), Is.True);
+        Assert.That(HasTag(filters[0], "allowedRoles", "employee"), Is.True);
+        Assert.That(HasTag(filters[0], "allowedRoles", "manager"), Is.True);
+        Assert.That(HasTag(filters[0], "allowedRoles", "__any__"), Is.True);
+        Assert.That(HasTag(filters[0], "sensitivity", "public"), Is.True);
+        Assert.That(HasTag(filters[0], "sensitivity", "internal"), Is.True);
+        Assert.That(HasTag(filters[0], "sensitivity", "__any__"), Is.True);
+    }
+
+    [Test]
+    public void ComposeFilters_WhenAnonymous_ForcesPublicAllScope()
+    {
+        var authorization = AuthorizationContext.Anonymous(["legacy-public-tag"]);
+
+        var filters = KernelMemoryKnowledge.ComposeFilters(_testAgentId, authorization);
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(HasTag(filters[0], "agentId", _testAgentId.ToString().ToLowerInvariant()), Is.True);
+        Assert.That(HasTag(filters[0], "tags", "public-all"), Is.True);
+        Assert.That(HasTag(filters[0], "tags", "legacy-public-tag"), Is.True);
+        Assert.That(HasTag(filters[0], "sensitivity", "public"), Is.True);
+        Assert.That(HasTag(filters[0], "sensitivity", "__any__"), Is.True);
+        Assert.That(HasTagName(filters[0], "allowedRoles"), Is.False);
+    }
+
+    [Test]
+    public void ComposeFilters_WhenNoAuthorizationAxes_ReturnsDenyAllFilter()
+    {
+        var filters = KernelMemoryKnowledge.ComposeFilters(_testAgentId, new AuthorizationContext());
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(HasTag(filters[0], "agentId", _testAgentId.ToString().ToLowerInvariant()), Is.True);
+        Assert.That(HasTag(filters[0], "tags", "__deny_all__"), Is.True);
+    }
+
+    [Test]
+    public void ComposeFilters_WhenOnlySensitivityExists_ReturnsDenyAllFilter()
+    {
+        var filters = KernelMemoryKnowledge.ComposeFilters(
+            _testAgentId,
+            new AuthorizationContext { SensitivityLevel = "Internal" });
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(HasTag(filters[0], "tags", "__deny_all__"), Is.True);
+    }
+
+    [Test]
+    public void ComposeFilters_WhenAnonymous_DoesNotMatchInternalDocumentEvenWhenTagMatches()
+    {
+        var documentTags = KernelMemoryKnowledge.ComposeTags(
+            _testAgentId,
+            new DocumentPermissionMetadata
+            {
+                AllowedTags = ["public-all"],
+                SensitivityLevel = "Internal"
+            });
+
+        var filters = KernelMemoryKnowledge.ComposeFilters(_testAgentId, AuthorizationContext.Anonymous());
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(Matches(documentTags, filters[0]), Is.False);
+    }
+
+    [Test]
+    public void ComposeTags_WhenRestrictionAxesAreEmpty_StampsAnySentinel()
+    {
+        var documentTags = KernelMemoryKnowledge.ComposeTags(
+            _testAgentId,
+            new DocumentPermissionMetadata { AllowedTags = ["hr-policy"] });
+
+        Assert.That(HasTag(documentTags, "tags", "hr-policy"), Is.True);
+        Assert.That(HasTag(documentTags, "allowedRoles", "__any__"), Is.True);
+        Assert.That(HasTag(documentTags, "businessUnits", "__any__"), Is.True);
+        Assert.That(HasTag(documentTags, "countries", "__any__"), Is.True);
+        Assert.That(HasTag(documentTags, "legalEntities", "__any__"), Is.True);
+        Assert.That(HasTag(documentTags, "sensitivity", "__any__"), Is.True);
+    }
+
+    [Test]
+    public void ComposeFilters_WithAuthenticatedUser_MatchesDocumentWithoutRoleRestriction()
+    {
+        var documentTags = KernelMemoryKnowledge.ComposeTags(
+            _testAgentId,
+            new DocumentPermissionMetadata
+            {
+                AllowedTags = ["hr-policy"]
+            });
+
+        var filters = KernelMemoryKnowledge.ComposeFilters(
+            _testAgentId,
+            new AuthorizationContext
+            {
+                Roles = ["Manager"],
+                AllowedTags = ["hr-policy"],
+                BusinessUnits = ["Vietnam"],
+                SensitivityLevel = "Internal"
+            });
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(Matches(documentTags, filters[0]), Is.True);
+    }
+
+    [Test]
+    public void ComposeTags_WhenPublicTagGuidIsPresent_AlsoStampsPublicAllLiteral()
+    {
+        var documentTags = KernelMemoryKnowledge.ComposeTags(
+            _testAgentId,
+            new DocumentPermissionMetadata { AllowedTags = ["10dd4508-4e35-4c63-bd74-5d90246c7770"] });
+
+        Assert.That(HasTag(documentTags, "tags", "public-all"), Is.True);
+    }
+
+    private static bool HasTag(MemoryFilter filter, string name, string value)
+    {
+        return filter.Any(x =>
+            x.Key == name &&
+            x.Value.Any(v => string.Equals(v, value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool HasTag(TagCollection tags, string name, string value)
+    {
+        return tags.Any(x =>
+            x.Key == name &&
+            x.Value.Any(v => string.Equals(v, value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool HasTagName(MemoryFilter filter, string name)
+    {
+        return filter.Any(x => x.Key == name);
+    }
+
+    private static bool Matches(TagCollection documentTags, MemoryFilter filter)
+    {
+        return filter.All(axis =>
+            axis.Value.Any(filterValue =>
+                filterValue is not null && HasTag(documentTags, axis.Key, filterValue)));
     }
 
     #endregion

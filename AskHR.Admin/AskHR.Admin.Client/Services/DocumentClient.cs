@@ -16,6 +16,9 @@ public class DocumentClient(HttpClient httpClient)
     }
 
     public async Task UploadDocumentsAsync(Guid agentId, IList<IBrowserFile> files, Guid? folderId, List<string> tags)
+        => await UploadDocumentsAsync(agentId, files, folderId, tags, null);
+
+    public async Task UploadDocumentsAsync(Guid agentId, IList<IBrowserFile> files, Guid? folderId, List<string> tags, DocumentPermissionMetadata? permissions)
     {
         long maxFileSize = 50 * 1024L * 1024L; // 50 MB
         using var content = new MultipartFormDataContent();
@@ -46,6 +49,24 @@ public class DocumentClient(HttpClient httpClient)
                 queryParams.Add($"tags={Uri.EscapeDataString(tag)}");
             }
         }
+
+        if (permissions is not null)
+        {
+            foreach (var role in permissions.Roles.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                queryParams.Add($"roles={Uri.EscapeDataString(role)}");
+            }
+
+            foreach (var businessUnit in permissions.BusinessUnits.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                queryParams.Add($"businessUnits={Uri.EscapeDataString(businessUnit)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(permissions.SensitivityLevel))
+            {
+                queryParams.Add($"sensitivityLevel={Uri.EscapeDataString(permissions.SensitivityLevel)}");
+            }
+        }
         
         var queryString = queryParams.Count != 0 ? "?" + string.Join("&", queryParams) : "";
         var response = await httpClient.PostAsync($"api/documents/upload/{agentId}{queryString}", content);
@@ -58,8 +79,11 @@ public class DocumentClient(HttpClient httpClient)
         response.EnsureSuccessStatusCode();
     }
     public async Task<string> ImportWebPageAsync(Guid agentId, string url, Guid? folderId, List<string> tags)
+        => await ImportWebPageAsync(agentId, url, folderId, tags, null);
+
+    public async Task<string> ImportWebPageAsync(Guid agentId, string url, Guid? folderId, List<string> tags, DocumentPermissionMetadata? permissions)
     {
-        var request = new { Url = url , FolderId = folderId, Tags = tags};
+        var request = new { Url = url , FolderId = folderId, Tags = tags, Permissions = permissions };
         var response = await httpClient.PostAsJsonAsync($"api/documents/import-webpage/{agentId}", request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadAsStringAsync();
@@ -67,8 +91,11 @@ public class DocumentClient(HttpClient httpClient)
     }
 
     public async Task<string> UploadTextContentAsync(Guid agentId, string title, string content, Guid? folderId, List<string> tags)
+        => await UploadTextContentAsync(agentId, title, content, folderId, tags, null);
+
+    public async Task<string> UploadTextContentAsync(Guid agentId, string title, string content, Guid? folderId, List<string> tags, DocumentPermissionMetadata? permissions)
     {
-        var request = new { Title = title, Content = content, FolderId = folderId, Tags = tags };
+        var request = new { Title = title, Content = content, FolderId = folderId, Tags = tags, Permissions = permissions };
         var response = await httpClient.PostAsJsonAsync($"api/documents/upload-text/{agentId}", request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadAsStringAsync();

@@ -10,6 +10,7 @@ using AskHR.Orchestrator.Services.AnonymousSessions;
 using AskHR.Orchestrator.Services.DocumentAnalysis;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.Memory;
+using AskHR.Orchestrator.Services.Security;
 using AskHR.Orchestrator.Services.TokenTracking;
 using AskHR.ServiceDefaults;
 using OpenTelemetry;
@@ -88,6 +89,8 @@ builder.Services.Configure<AnonymousUserSettings>(
 builder.Services.AddScoped<IAgentFactory,AgentFactory>();
 builder.Services.AddScoped<AgentService>();
 builder.Services.AddScoped<IKnowledgeService, KernelMemoryKnowledge>();
+builder.Services.AddScoped<IIdentityResolver, HttpContextIdentityResolver>();
+builder.Services.AddScoped<IRbacService, RbacService>();
 builder.Services.AddScoped<IUserMemoryService, UserMemoryService>();
 builder.Services.AddScoped<IDocumentAnalysisService, DocumentAnalysisService>();
 builder.Services.AddScoped<ITokenTrackingService, TokenTrackingService>();

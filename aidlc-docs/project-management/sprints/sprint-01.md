@@ -29,23 +29,25 @@ updated: 2026-06-07
 
 ### To Do
 - [ ] **S-0201** Ingest `.docx/.md/PDF` → chunk + embed + index có citation metadata · [[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]]
-- [ ] **S-0401** Resolve identity → Authorization Context · [[units-security-identity#UoB-04: RBAC / Identity & Access]]
 
 ### In Progress
-- [/] **S-0202** Gắn permission metadata (role/tag/BU/sensitivity) cho mỗi chunk · [[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]] — _Đã có per-agent index isolation (mỗi agent 1 index `agent-{id}`) + tag metadata; còn thiếu các trục role/BU/sensitivity._
-- [/] **S-0103** Deny-by-default trên retrieval theo Authorization Context · [[units-retrieval-answer#UoB-01: Answer Policy Question]] — _Cơ chế deny-by-default đã enforce server-side; còn chờ bind vào AuthorizationContext đầy đủ (phụ thuộc S-0401)._
+_(trống)_
 
 ### Blocked
 _(trống)_
 
 ### Done
 - [x] **S-0402** Security-trimmed retrieval enforce server-side · [[units-security-identity#UoB-04: RBAC / Identity & Access]] — _Per-agent index + deny-by-default trong `KernelMemoryKnowledge`; xóa lỗ allow-by-default (search toàn cục khi filter rỗng); 26/26 unit test pass._
+- [x] **S-0401** Resolve identity → Authorization Context · [[units-security-identity#UoB-04: RBAC / Identity & Access]] — _Thêm `IIdentityResolver`, `IRbacService`, `AuthorizationContext`; RBAC lấy role/tag hiện có và hỗ trợ mock BU/sensitivity bằng config._
+- [x] **S-0202** Gắn permission metadata (role/tag/BU/sensitivity) cho mỗi chunk · [[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]] — _Upload API/Admin form nhận roles/BU/sensitivity; Kernel Memory tags có `allowedRoles`, `businessUnits`, `sensitivity`._
+- [x] **S-0103** Deny-by-default trên retrieval theo Authorization Context · [[units-retrieval-answer#UoB-01: Answer Policy Question]] — _Search dùng `AuthorizationContext`; filter OR giữa values và AND giữa axes; anonymous chỉ public scope; empty context dùng deny-all filter._
 
 ## Daily Log
 
 | Ngày | Cập nhật | Blocker |
 |---|---|---|
 | 2026-06-07 | Construction sớm: per-agent index + deny-by-default trong `KernelMemoryKnowledge` (S-0402 Done), security-trimmed retrieval enforce server-side. Thêm read-only Knowledge Backend panel ở Agent Dashboard + Azure AI Search scaffold. 2 commit code, 26/26 unit test pass. | Tài liệu cũ ở index mặc định cần re-ingest |
+| 2026-06-07 | Tiếp tục Sprint 01: thêm AuthorizationContext/DocumentPermissionMetadata, resolver/RBAC service, Admin upload metadata, Kernel Memory permission tags + AuthorizationContext filters; fix `__any__` sentinel, bỏ Cartesian filters, enforce sensitivity cho anonymous, và ghi chú operational tradeoff cho Sensitivity trống. Orchestrator tests 240/240 pass. | Cần re-ingest tài liệu để có metadata role/BU/sensitivity mới |
 | 2026-06-09 | _Sprint planning_ | |
 
 ## Definition of Done
