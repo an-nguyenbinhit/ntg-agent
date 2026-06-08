@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using AskHR.Common.Dtos.Constants;
 using AskHR.Orchestrator.Models.AnonymousSessions;
@@ -50,6 +52,17 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
         var guidToString = new ValueConverter<Guid, string>(
            g => g.ToString("D"),
            s => Guid.Parse(s)
+        );
+
+        var stringListToJson = new ValueConverter<List<string>, string>(
+            list => JsonSerializer.Serialize(list, JsonSerializerOptions.Default),
+            json => JsonSerializer.Deserialize<List<string>>(json, JsonSerializerOptions.Default) ?? new List<string>()
+        );
+
+        var stringListComparer = new ValueComparer<List<string>>(
+            (a, b) => (a ?? new List<string>()).SequenceEqual(b ?? new List<string>()),
+            list => list.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+            list => list.ToList()
         );
 
         modelBuilder.Entity<User>(b =>
@@ -198,6 +211,21 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
         .WithOne(t => t.Agent)
         .HasForeignKey(t => t.AgentId)
         .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Document>(e =>
+        {
+            e.Property(x => x.Roles)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.BusinessUnits)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.IngestStatus)
+                .HasConversion<string>()
+                .HasMaxLength(32);
+        });
 
         // UserPreference configuration
         modelBuilder.Entity<UserPreference>(e =>

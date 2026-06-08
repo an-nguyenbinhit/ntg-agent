@@ -29,7 +29,7 @@ updated: 2026-06-07
 > Thứ tự To Do phản ánh phụ thuộc: Admin Portal (control plane) trước → re-index/persona → Skill config → provider per skill → monitoring.
 
 ### To Do
-- [ ] **S-0501** Quản lý tài liệu/mapping qua control plane (Admin Portal) · [[units-governance-ops#UoB-05: Admin Portal / Monitoring]] · [[TASK-0501-admin-api]]
+- [x] **S-0501** Quản lý tài liệu/mapping qua control plane (Admin Portal) · [[units-governance-ops#UoB-05: Admin Portal / Monitoring]] · [[TASK-0501-admin-api]]
 - [ ] **S-0502** Cấu hình persona/tone và provider config · [[units-governance-ops#UoB-05: Admin Portal / Monitoring]]
 - [ ] **S-0203** Re-index khi tài liệu mới/đổi (hash/timestamp/trigger), không cron cứng · [[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]]
 - [ ] **S-0105** Cấu hình Skill (instructions/answer policy) qua progressive disclosure · [[units-retrieval-answer#UoB-01: Answer Policy Question]]
@@ -43,7 +43,11 @@ _(trống)_
 _(trống)_
 
 ### Done
-_(trống)_
+- [x] **S-0501** Quản lý tài liệu/mapping qua control plane (Admin Portal) · [[units-governance-ops#UoB-05: Admin Portal / Monitoring]] · [[TASK-0501-admin-api]]
+
+## Status Reconciliation
+
+- 2026-06-08: S-0501 is implemented. Added `IngestStatus` enum and metadata properties (`Roles`, `BusinessUnits`, `SensitivityLevel`) to `Document` entity and EF Core DB schema. Added `UpdateDocumentMetadata` and `ReindexDocument` endpoints to `DocumentsController`. Re-indexing logic properly replaces Kernel Memory document index and updates metadata in the Orchestrator DB. All 278 Unit tests pass.
 
 ## Daily Log
 

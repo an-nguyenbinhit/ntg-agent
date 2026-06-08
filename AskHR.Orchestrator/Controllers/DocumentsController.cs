@@ -65,7 +65,12 @@ public class DocumentsController : ControllerBase
                     x.Name,
                     x.CreatedAt,
                     x.UpdatedAt,
-                    x.DocumentTags.Select(dt => dt.Tag.Name).ToList()))
+                    x.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
+                    x.Roles,
+                    x.BusinessUnits,
+                    x.SensitivityLevel,
+                    x.IngestStatus,
+                    x.IngestErrorMessage))
                 .ToListAsync();
             return Ok(defaultDocuments);
         }
@@ -78,7 +83,12 @@ public class DocumentsController : ControllerBase
             x.Name,
             x.CreatedAt,
             x.UpdatedAt,
-            x.DocumentTags.Select(dt => dt.Tag.Name).ToList()))
+            x.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
+            x.Roles,
+            x.BusinessUnits,
+            x.SensitivityLevel,
+            x.IngestStatus,
+            x.IngestErrorMessage))
         .ToListAsync();
 
         _logger.LogBusinessEvent("DocumentsRetrieved", new { AgentId = agentId, DocumentCount = documents.Count });
@@ -154,7 +164,11 @@ public class DocumentsController : ControllerBase
                     UpdatedByUserId = userId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
-                    Type = DocumentType.File
+                    Type = DocumentType.File,
+                    Roles = permissions.Roles,
+                    BusinessUnits = permissions.BusinessUnits,
+                    SensitivityLevel = permissions.SensitivityLevel,
+                    IngestStatus = IngestStatus.Success
                 };
                 documents.Add(document);
                 foreach (var tag in tags)
@@ -217,6 +231,84 @@ public class DocumentsController : ControllerBase
 
         return NoContent();
     }
+
+    /// <summary>
+    /// Updates a document's permission metadata (roles, business units, sensitivity level) and re-indexes it
+    /// in the knowledge base so the vector store reflects the new permissions.
+    /// </summary>
+    /// <param name="agentId">The unique identifier of the agent associated with the document.</param>
+    /// <param name="id">The unique identifier of the document to update.</param>
+    /// <param name="request">The new permission metadata for the document.</param>
+    [HttpPut("{agentId}/{id}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateDocumentMetadata(Guid agentId, Guid id, [FromBody] DocumentMetadataUpdateRequest request, CancellationToken ct)
+    {
+        var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
+
+        var document = await _agentDbContext.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.AgentId == agentId, ct);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        document.Roles = request.Roles ?? [];
+        document.BusinessUnits = request.BusinessUnits ?? [];
+        document.SensitivityLevel = request.SensitivityLevel;
+        document.UpdatedByUserId = userId;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        await ReindexDocumentAsync(document, ct);
+
+        await _agentDbContext.SaveChangesAsync(ct);
+
+        _logger.LogBusinessEvent("DocumentMetadataUpdated", new { AgentId = agentId, DocumentId = id, document.IngestStatus });
+
+        return Ok(new DocumentListItem(
+            document.Id,
+            document.Name,
+            document.CreatedAt,
+            document.UpdatedAt,
+            [],
+            document.Roles,
+            document.BusinessUnits,
+            document.SensitivityLevel,
+            document.IngestStatus,
+            document.IngestErrorMessage));
+    }
+
+    /// <summary>
+    /// Manually triggers re-indexing of a document in the knowledge base using its currently stored permission metadata.
+    /// Useful when a document failed to ingest or its index needs to be refreshed.
+    /// </summary>
+    /// <param name="agentId">The unique identifier of the agent associated with the document.</param>
+    /// <param name="id">The unique identifier of the document to re-index.</param>
+    [HttpPost("{agentId}/{id}/reindex")]
+    [Authorize]
+    public async Task<IActionResult> ReindexDocument(Guid agentId, Guid id, CancellationToken ct)
+    {
+        var document = await _agentDbContext.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.AgentId == agentId, ct);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        await ReindexDocumentAsync(document, ct);
+        await _agentDbContext.SaveChangesAsync(ct);
+
+        _logger.LogBusinessEvent("DocumentReindexed", new { AgentId = agentId, DocumentId = id, document.IngestStatus });
+
+        if (document.IngestStatus == IngestStatus.Failed)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { document.IngestStatus, document.IngestErrorMessage });
+        }
+
+        return Ok(new { document.IngestStatus });
+    }
+
     /// <summary>
     /// Imports a webpage into the system and associates it with the specified agent.
     /// </summary>
@@ -257,7 +349,11 @@ public class DocumentsController : ControllerBase
                 UpdatedByUserId = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                Type = DocumentType.WebPage
+                Type = DocumentType.WebPage,
+                Roles = permissions.Roles,
+                BusinessUnits = permissions.BusinessUnits,
+                SensitivityLevel = permissions.SensitivityLevel,
+                IngestStatus = IngestStatus.Success
             };
 
             var documentTags = new List<DocumentTag>();
@@ -324,7 +420,11 @@ public class DocumentsController : ControllerBase
                 UpdatedByUserId = userId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                Type = DocumentType.Text
+                Type = DocumentType.Text,
+                Roles = permissions.Roles,
+                BusinessUnits = permissions.BusinessUnits,
+                SensitivityLevel = permissions.SensitivityLevel,
+                IngestStatus = IngestStatus.Success
             };
 
             var documentTags = new List<DocumentTag>();
@@ -450,6 +550,71 @@ public class DocumentsController : ControllerBase
     private static DocumentPermissionMetadata BuildPermissions(IEnumerable<string>? tags, DocumentPermissionMetadata? permissions)
     {
         return (permissions ?? new DocumentPermissionMetadata()).WithAllowedTags(tags);
+    }
+
+    /// <summary>
+    /// Re-imports a document into the knowledge base using its currently stored permission metadata, replacing
+    /// the previous knowledge base entry. Updates the document's <see cref="Document.IngestStatus"/> and
+    /// <see cref="Document.IngestErrorMessage"/> based on the outcome. Caller is responsible for persisting changes.
+    /// </summary>
+    private async Task ReindexDocumentAsync(Document document, CancellationToken ct)
+    {
+        var tags = await _agentDbContext.DocumentTags
+            .Where(dt => dt.DocumentId == document.Id)
+            .Select(dt => dt.Tag.Name)
+            .ToListAsync(ct);
+
+        var permissions = BuildPermissions(tags, new DocumentPermissionMetadata
+        {
+            Roles = document.Roles,
+            BusinessUnits = document.BusinessUnits,
+            SensitivityLevel = document.SensitivityLevel
+        });
+
+        var previousKnowledgeDocId = document.KnowledgeDocId;
+
+        try
+        {
+            string newKnowledgeDocId;
+            if (document.Type == DocumentType.WebPage)
+            {
+                if (string.IsNullOrWhiteSpace(document.Url))
+                {
+                    throw new InvalidOperationException("Document has no source URL to re-index from.");
+                }
+
+                newKnowledgeDocId = await _knowledgeService.ImportWebPageAsync(document.Url, document.AgentId, permissions, ct);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(previousKnowledgeDocId))
+                {
+                    throw new InvalidOperationException("Document has no existing knowledge base content to re-index from.");
+                }
+
+                var fileName = FileTypeService.SanitizeFileName(document.Name);
+                var content = await _knowledgeService.ExportDocumentAsync(previousKnowledgeDocId, fileName, document.AgentId, ct)
+                    ?? throw new InvalidOperationException("Unable to retrieve the document's existing content from the knowledge base.");
+
+                await using var stream = await content.GetStreamAsync();
+                newKnowledgeDocId = await _knowledgeService.ImportDocumentAsync(stream, fileName, document.AgentId, permissions, ct);
+            }
+
+            document.KnowledgeDocId = newKnowledgeDocId;
+            document.IngestStatus = IngestStatus.Success;
+            document.IngestErrorMessage = null;
+
+            if (!string.IsNullOrWhiteSpace(previousKnowledgeDocId) && previousKnowledgeDocId != newKnowledgeDocId)
+            {
+                await _knowledgeService.RemoveDocumentAsync(previousKnowledgeDocId, document.AgentId, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            document.IngestStatus = IngestStatus.Failed;
+            document.IngestErrorMessage = ex.Message;
+            _logger.LogError(ex, "Failed to re-index document {DocumentId} for agent {AgentId}", document.Id, document.AgentId);
+        }
     }
 }
 

@@ -419,3 +419,11 @@ vậy commit đi
 **Context**: Construction phase - Sprint 03 S-0803 implementation and S-0801 streaming contract foundation.
 
 ---
+
+---
+
+## Construction: Sprint 04 Admin Portal REST Endpoints Schema
+**Timestamp**: 2026-06-08T23:12:07+07:00
+**User Input**: "review code change"
+**AI Response**: "Reviewed user-implemented S-0501 Admin Portal endpoints. Verified the addition of IngestStatus enum, Document metadata properties (Roles, BusinessUnits, SensitivityLevel) to EF Core, and new endpoints (UpdateDocumentMetadata, ReindexDocument) in DocumentsController. All 278 Unit tests passed. Updated sprint-04.md and created walkthrough."
+**Context**: Construction phase - Sprint 04 S-0501 REST Endpoints code review and verification.

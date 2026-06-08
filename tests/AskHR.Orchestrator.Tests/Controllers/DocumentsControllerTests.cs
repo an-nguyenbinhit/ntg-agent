@@ -347,6 +347,149 @@ public class DocumentsControllerTests
         _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
     [Test]
+    public async Task UpdateDocumentMetadata_WhenDocumentNotFound_ReturnsNotFound()
+    {
+        // Arrange
+        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Confidential");
+        // Act
+        var result = await _controller.UpdateDocumentMetadata(_testAgentId, Guid.NewGuid(), request, CancellationToken.None);
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+    }
+    [Test]
+    public void UpdateDocumentMetadata_WhenUserNotAuthenticated_ThrowsUnauthorizedAccessException()
+    {
+        // Arrange
+        var anonymousUser = new ClaimsPrincipal(new ClaimsIdentity());
+        _controller.ControllerContext.HttpContext.User = anonymousUser;
+        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Confidential");
+        // Act & Assert
+        var exception = Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _controller.UpdateDocumentMetadata(_testAgentId, Guid.NewGuid(), request, CancellationToken.None));
+        Assert.That(exception.Message, Is.EqualTo("User is not authenticated."));
+    }
+    [Test]
+    public async Task UpdateDocumentMetadata_WhenWebPageDocument_UpdatesMetadataAndReindexesSuccessfully()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("new-knowledge-doc-id");
+        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Confidential");
+        // Act
+        var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
+        // Assert
+        var okResult = result as OkObjectResult;
+        Assert.That(okResult, Is.Not.Null);
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.Roles, Is.EquivalentTo(new[] { "HR" }));
+        Assert.That(updatedDocument.BusinessUnits, Is.EquivalentTo(new[] { "Finance" }));
+        Assert.That(updatedDocument.SensitivityLevel, Is.EqualTo("Confidential"));
+        Assert.That(updatedDocument.IngestStatus, Is.EqualTo(IngestStatus.Success));
+        Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("new-knowledge-doc-id"));
+        _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+    [Test]
+    public async Task UpdateDocumentMetadata_WhenReindexFails_SetsIngestStatusFailed()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "policy.md",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.File,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService.Setup(x => x.ExportDocumentAsync("old-knowledge-doc-id", It.IsAny<string>(), _testAgentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Microsoft.KernelMemory.StreamableFileContent)null!);
+        var request = new DocumentMetadataUpdateRequest(["HR"], [], "Confidential");
+        // Act
+        var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Failed));
+        Assert.That(updatedDocument.IngestErrorMessage, Is.Not.Null.And.Not.Empty);
+        Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("old-knowledge-doc-id"));
+        _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+    [Test]
+    public async Task ReindexDocument_WhenDocumentNotFound_ReturnsNotFound()
+    {
+        // Act
+        var result = await _controller.ReindexDocument(_testAgentId, Guid.NewGuid(), CancellationToken.None);
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+    }
+    [Test]
+    public async Task ReindexDocument_WhenSuccessful_ReturnsOk()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Failed,
+            IngestErrorMessage = "previous failure"
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("new-knowledge-doc-id");
+        // Act
+        var result = await _controller.ReindexDocument(_testAgentId, document.Id, CancellationToken.None);
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Success));
+        Assert.That(updatedDocument.IngestErrorMessage, Is.Null);
+    }
+    [Test]
+    public async Task ReindexDocument_WhenFails_ReturnsBadGateway()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "policy.md",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.File,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService.Setup(x => x.ExportDocumentAsync("old-knowledge-doc-id", It.IsAny<string>(), _testAgentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Microsoft.KernelMemory.StreamableFileContent)null!);
+        // Act
+        var result = await _controller.ReindexDocument(_testAgentId, document.Id, CancellationToken.None);
+        // Assert
+        var statusResult = result as ObjectResult;
+        Assert.That(statusResult, Is.Not.Null);
+        Assert.That(statusResult.StatusCode, Is.EqualTo(StatusCodes.Status502BadGateway));
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Failed));
+    }
+    [Test]
     public async Task ImportWebPage_WhenUrlIsEmpty_ReturnsBadRequest()
     {
         // Arrange

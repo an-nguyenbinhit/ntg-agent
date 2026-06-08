@@ -1,3 +1,5 @@
+using AskHR.Common.Dtos.Documents;
+
 namespace AskHR.Orchestrator.Models.Documents;
 
 public class Document
@@ -18,7 +20,13 @@ public class Document
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DocumentType Type { get; set; } = DocumentType.File;
-    
+
+    public List<string> Roles { get; set; } = [];
+    public List<string> BusinessUnits { get; set; } = [];
+    public string? SensitivityLevel { get; set; }
+    public IngestStatus IngestStatus { get; set; } = IngestStatus.Pending;
+    public string? IngestErrorMessage { get; set; }
+
     // Navigation properties
     public ICollection<DocumentTag> DocumentTags { get; set; } = new List<DocumentTag>();
 }
