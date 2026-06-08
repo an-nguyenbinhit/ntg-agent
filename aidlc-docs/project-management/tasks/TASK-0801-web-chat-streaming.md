@@ -2,7 +2,7 @@
 type: task
 task: "TASK-0801"
 story: "S-0801"
-status: todo
+status: partial
 owner:
 tags: [scrum, task, web-chat]
 related: ["[[units-channels#UoB-08: Web Chat Channel]]", "[[units-security-identity#UoB-04: RBAC / Identity & Access]]"]
@@ -40,4 +40,5 @@ Chốt transport (SSE vs SignalR) và định nghĩa streaming event contract đ
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Chose HTTP JSON streaming for the first contract slice because existing WebClient already consumes `IAsyncEnumerable` over HTTP. Added `/api/answers/stream` and `AskHrStreamEvent` with `token`, `citation`, `done`, `error`, and reserved `handoff`.
+- 2026-06-08: Current implementation emits a coarse `token` event after `PolicyAnswerService` completes. True token-by-token streaming is not done yet; it requires adding streaming support to `IModelGateway`/provider adapters and then updating WebClient to consume the AskHR-specific stream.

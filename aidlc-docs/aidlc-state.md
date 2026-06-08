@@ -6,7 +6,7 @@
 - **Project Type**: Brownfield application với AI-DLC requirements baseline
 - **Start Date**: 2026-06-06T00:00:00Z
 - **Current Phase**: CONSTRUCTION
-- **Current Stage**: Sprint 01 - ổn định RBAC & Index
+- **Current Stage**: Sprint 03 - Web Chat identity/streaming foundation
 
 ## Workspace State
 
@@ -31,12 +31,19 @@
 | Workflow Planning | Complete | Sprint sequence và Sprint 01-04 đã có trong `project-management/sprints/`. |
 | Application Design | Drafted | Domain/service boundaries được thể hiện qua UoB docs, ADR-001, `IKnowledgeService`, `AuthorizationContext`, RBAC và Kernel Memory adapter contracts hiện có. |
 | Units Generation | Complete | UoB-01 đến UoB-08 đã có và đã map vào Scrum execution artifacts. |
-| Code Generation | In Progress | Sprint 01 P0 implementation gần hoàn tất: S-0401, S-0402, S-0202, S-0103 và S-0201 đã implemented. |
+| Code Generation | In Progress | Sprint 01 P0 và Sprint 02 core answer/Slack logic đã code-complete. Sprint 03 đã bắt đầu với S-0803 implemented và S-0801 streaming contract partial. |
 | Build and Test | In Progress | Orchestrator unit tests là verification target hiện tại; nếu cần strict AI-DLC closure thì vẫn phải tạo final Construction build/test artifact. |
 
 ## Current Recommendation
 
-Sprint 01 implementation đã hoàn tất về mặt chức năng cho RBAC + ingest/index boundaries, nhưng còn một operational data task trước khi Sprint 02 có thể dựa vào retrieval:
+### Current Recommendation Override - 2026-06-08
+
+1. Slack rollout hardening remains open: configure Bot token, Signing Secret, event subscription/scopes, and verify `app_mention`/DM end-to-end.
+2. S-0201 production re-ingest remains blocked until corpus/index inventory is available; do not use old default index for production rollout.
+3. Sprint 03 development can continue against dev/mock corpus because deny-by-default retrieval is already enforced.
+4. Current Sprint 03 focus: extend true token streaming through `IModelGateway`, wire WebClient to `/api/answers/stream`, then implement feedback/severity before warm handoff.
+
+Sprint 02 đã code-complete cho answer pipeline/model routing/audit logging/Slack gateway. Trạng thái tiếp theo:
 
 1. Re-ingest các document đã được index trước khi permission metadata được bổ sung.
 2. Đảm bảo mỗi document re-ingested có `allowedRoles`, `businessUnits` và `sensitivity` metadata.

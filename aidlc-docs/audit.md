@@ -412,3 +412,10 @@ vậy commit đi
 **Context**: Construction phase — Sprint 01 RBAC identity + permission metadata + retrieval filtering completion.
 
 ---
+## Construction: Sprint 03 Web Identity + AskHR Stream Contract
+**Timestamp**: 2026-06-08T00:00:00+07:00
+**User Input**: "code đi"
+**AI Response**: "Implemented Sprint 03 foundation on existing code: added `WebIdentityResolver` for cookie/JWT/email claim mapping to internal user identity, wired `IIdentityResolver` DI to the new resolver, added `AskHrStreamEvent` contract and `AskHrStreamService`, exposed `/api/answers/stream` using shared `PolicyAnswerService` and `IRbacService`, added focused unit tests, and updated Sprint 02/Sprint 03 task tracking. Current stream emits coarse token after answer completion; true token-by-token requires `IModelGateway` streaming support."
+**Context**: Construction phase - Sprint 03 S-0803 implementation and S-0801 streaming contract foundation.
+
+---

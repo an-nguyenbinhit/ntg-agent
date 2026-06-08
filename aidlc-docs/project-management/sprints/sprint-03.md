@@ -46,6 +46,11 @@ _(trống)_
 ### Done
 _(trống)_
 
+## Status Reconciliation
+
+- 2026-06-08: S-0803 is implemented. `WebIdentityResolver` resolves authenticated web cookie/JWT claims (`NameIdentifier`, `oid`, `sub`) or email claims (`email`, `preferred_username`, `upn`) to internal user identity, then shared `IRbacService` builds `AuthorizationContext`.
+- 2026-06-08: S-0801 is in progress. `/api/answers/stream` now emits `AskHrStreamEvent` contract (`token`, `citation`, `done`, `error`, `handoff`) through the AskHR answer pipeline. Current token event is coarse after `PolicyAnswerService` completes; true token-by-token model streaming still requires extending `IModelGateway` and wiring WebClient.
+
 ## Daily Log
 
 | Ngày | Cập nhật | Blocker |

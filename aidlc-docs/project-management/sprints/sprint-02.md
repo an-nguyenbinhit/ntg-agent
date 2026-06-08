@@ -45,6 +45,13 @@ _(trống)_
 ### Done
 _(trống)_
 
+## Status Reconciliation
+
+- 2026-06-08: Sprint 02 is code-complete for S-0701, S-0303, S-0101, and S-0102.
+- 2026-06-08: S-0301 remains rollout-hardening: Slack Bot token, Signing Secret, event subscription, scopes, and integration verification are still required.
+- 2026-06-08: S-0601 is partial: masked/hash audit logging exists; durable storage, retention config, feedback events, and handoff events remain downstream work.
+- 2026-06-08: S-0201 production re-ingest remains blocked pending corpus/index inventory with permission metadata.
+
 ## Daily Log
 
 | Ngày | Cập nhật | Blocker |
