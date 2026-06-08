@@ -5,4 +5,8 @@ public sealed record AskHrAnswerResponse(
     IReadOnlyList<AnswerCitationDto> Citations,
     double Confidence,
     string? FallbackReason,
-    AnswerAuditMetadataDto AuditMetadata);
+    AnswerAuditMetadataDto AuditMetadata,
+    Guid? ConversationId = null,
+    Guid? MessageId = null,
+    bool IsHandoff = false,
+    string? HandoffId = null);

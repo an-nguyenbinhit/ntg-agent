@@ -17,4 +17,8 @@ public sealed record AskHrStreamEvent(
     string? Content = null,
     AnswerCitationDto? Citation = null,
     AskHrAnswerResponse? Answer = null,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    string? Severity = null,
+    Guid? ConversationId = null,
+    Guid? MessageId = null,
+    string? HandoffId = null);

@@ -20,46 +20,44 @@ public sealed class AskHrStreamService : IAskHrStreamService
         AuthorizationContext authorization,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        AskHrAnswerResponse? answer = null;
-        AskHrStreamEvent? errorEvent = null;
-        try
-        {
-            answer = await _answerService.AnswerAsync(request, authorization, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "AskHR web answer stream failed for agent {AgentId}", request.AgentId);
-            errorEvent = new AskHrStreamEvent(
-                AskHrStreamEventType.Error,
-                Content: "I could not complete this answer. Please try again or contact HR.",
-                ErrorCode: "answer-stream-failed");
-        }
+        var stream = _answerService.StreamAnswerAsync(request, authorization, cancellationToken);
+        await using var enumerator = stream.GetAsyncEnumerator(cancellationToken);
 
-        if (errorEvent is not null)
+        while (true)
         {
-            yield return errorEvent;
-            yield break;
-        }
+            AskHrStreamEvent? streamEvent = null;
+            AskHrStreamEvent? errorEvent = null;
+            var hasNext = false;
+            try
+            {
+                hasNext = await enumerator.MoveNextAsync();
+                streamEvent = hasNext ? enumerator.Current : null;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AskHR web answer stream failed for agent {AgentId}", request.AgentId);
+                errorEvent = new AskHrStreamEvent(
+                    AskHrStreamEventType.Error,
+                    Content: "I could not complete this answer. Please try again or contact HR.",
+                    ErrorCode: "answer-stream-failed");
+            }
 
-        if (answer is null)
-        {
-            yield break;
-        }
+            if (errorEvent is not null)
+            {
+                yield return errorEvent;
+                yield break;
+            }
 
-        if (!string.IsNullOrWhiteSpace(answer.AnswerText))
-        {
-            yield return new AskHrStreamEvent(AskHrStreamEventType.Token, Content: answer.AnswerText);
-        }
+            if (!hasNext || streamEvent is null)
+            {
+                yield break;
+            }
 
-        foreach (var citation in answer.Citations)
-        {
-            yield return new AskHrStreamEvent(AskHrStreamEventType.Citation, Citation: citation);
+            yield return streamEvent;
         }
-
-        yield return new AskHrStreamEvent(AskHrStreamEventType.Done, Answer: answer);
     }
 }

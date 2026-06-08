@@ -42,3 +42,6 @@ Chốt transport (SSE vs SignalR) và định nghĩa streaming event contract đ
 
 - 2026-06-08: Chose HTTP JSON streaming for the first contract slice because existing WebClient already consumes `IAsyncEnumerable` over HTTP. Added `/api/answers/stream` and `AskHrStreamEvent` with `token`, `citation`, `done`, `error`, and reserved `handoff`.
 - 2026-06-08: Current implementation emits a coarse `token` event after `PolicyAnswerService` completes. True token-by-token streaming is not done yet; it requires adding streaming support to `IModelGateway`/provider adapters and then updating WebClient to consume the AskHR-specific stream.
+- 2026-06-08: Implemented true token streaming through `IModelGateway.StreamCompleteAsync` using `IChatClient.GetStreamingResponseAsync`. `PolicyAnswerService.StreamAnswerAsync` now emits citations before model tokens, accumulates the final answer for audit/persistence, and emits `done` with `ConversationId`/`MessageId`.
+- 2026-06-08: WebClient text-only chat now consumes `/api/answers/stream`. Multipart upload/document-analysis still uses the existing `/api/agents/chat` path because `/api/answers/stream` has no multipart contract yet.
+- 2026-06-08: Cancellation is handled by the HTTP request cancellation token. Explicit reconnect/resume is not implemented in this slice.

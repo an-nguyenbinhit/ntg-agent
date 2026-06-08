@@ -50,6 +50,9 @@ _(trống)_
 
 - 2026-06-08: S-0803 is implemented. `WebIdentityResolver` resolves authenticated web cookie/JWT claims (`NameIdentifier`, `oid`, `sub`) or email claims (`email`, `preferred_username`, `upn`) to internal user identity, then shared `IRbacService` builds `AuthorizationContext`.
 - 2026-06-08: S-0801 is in progress. `/api/answers/stream` now emits `AskHrStreamEvent` contract (`token`, `citation`, `done`, `error`, `handoff`) through the AskHR answer pipeline. Current token event is coarse after `PolicyAnswerService` completes; true token-by-token model streaming still requires extending `IModelGateway` and wiring WebClient.
+- 2026-06-08: S-0801 true token streaming implemented. `IModelGateway` streams model chunks, `PolicyAnswerService` streams citation/token/done events, and WebClient consumes `/api/answers/stream` for text-only AskHR chat.
+- 2026-06-08: S-0802/S-0602 implemented for AskHR web stream using existing SQL-backed `Conversation`/`ChatMessages` and existing reaction/comment endpoints. Final stream `done` returns `MessageId` so feedback buttons bind to the persisted assistant message.
+- 2026-06-08: S-0603/S-0104 implemented for Sprint 03 scope with static rule-based severity and warm handoff audit packaging. Sensitive conversations are frozen by persisted handoff assistant messages; no external notification integration is included.
 
 ## Daily Log
 

@@ -2,7 +2,7 @@
 type: task
 task: "TASK-0104"
 story: "S-0104"
-status: todo
+status: done
 owner:
 tags: [scrum, task, escalation]
 related: ["[[units-retrieval-answer#UoB-01: Answer Policy Question]]", "[[units-channels#UoB-03: Slack Mention & Thread Context]]", "[[units-governance-ops#UoB-06: Feedback, Audit & Analytics]]"]
@@ -41,4 +41,6 @@ Phát hiện chủ đề nhạy cảm → freeze auto-answer → đóng gói con
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Implemented rule-based sensitive-topic detection for Sprint 03. Sensitive P1 topics emit `handoff`, skip model generation, persist an assistant handoff message, and write `handoff.created` / `answer.generated` audit events with masked text.
+- 2026-06-08: Warm handoff scope is audit/event packaging only. No Slack/Teams/email notification is sent in this slice.
+- 2026-06-08: Conversation freeze is persisted by the saved handoff assistant message; subsequent requests in the same thread are blocked from automated answering.

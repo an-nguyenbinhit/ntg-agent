@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 
@@ -36,6 +37,33 @@ public sealed class ModelGateway : IModelGateway
         return new ModelCompletionResponse(text, route.ToDto(), response);
     }
 
+    public async IAsyncEnumerable<ModelStreamResponse> StreamCompleteAsync(
+        ModelCompletionRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var route = await _router.ResolveAsync(request.Capability, request.AgentId, request.DataClass, cancellationToken);
+        var client = _chatClientFactory.Create(route);
+        var routeDto = route.ToDto();
+
+        _logger.LogDebug(
+            "Streaming model route {RouteName} provider {Provider} model {Model} for {Capability}",
+            route.RouteName,
+            route.Provider,
+            route.Model,
+            request.Capability);
+
+        await foreach (var update in client.GetStreamingResponseAsync(request.Messages, request.Options, cancellationToken))
+        {
+            var text = ExtractText(update);
+            if (!string.IsNullOrEmpty(text))
+            {
+                yield return new ModelStreamResponse(text, routeDto, update);
+            }
+        }
+    }
+
     private static string ExtractText(ChatResponse response)
     {
         if (!string.IsNullOrWhiteSpace(response.Text))
@@ -53,5 +81,21 @@ public sealed class ModelGateway : IModelGateway
         }
 
         return builder.ToString().Trim();
+    }
+
+    private static string ExtractText(ChatResponseUpdate update)
+    {
+        if (!string.IsNullOrEmpty(update.Text))
+        {
+            return update.Text;
+        }
+
+        var builder = new StringBuilder();
+        foreach (var content in update.Contents.OfType<TextContent>())
+        {
+            builder.Append(content.Text);
+        }
+
+        return builder.ToString();
     }
 }

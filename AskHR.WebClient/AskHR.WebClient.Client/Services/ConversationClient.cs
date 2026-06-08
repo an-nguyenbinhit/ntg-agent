@@ -79,17 +79,19 @@ public class ConversationClient(HttpClient httpClient)
         return result ?? [];
     }
 
-    public async Task<bool> UpdateMessageReactionAsync(Guid conversationId, Guid messageId, ReactionType reaction)
+    public async Task<bool> UpdateMessageReactionAsync(Guid conversationId, Guid messageId, ReactionType reaction, string? currentSessionId = null)
     {
         var request = new UpdateReactionRequest { Reaction = reaction };
-        var response = await httpClient.PutAsJsonAsync($"/api/conversations/{conversationId}/messages/{messageId}/reaction", request);
+        var url = BuildFeedbackUrl(conversationId, messageId, "reaction", currentSessionId);
+        var response = await httpClient.PutAsJsonAsync(url, request);
         return response.IsSuccessStatusCode;
     }
 
-    public async Task<bool> UpdateMessageCommentAsync(Guid conversationId, Guid messageId, string comment)
+    public async Task<bool> UpdateMessageCommentAsync(Guid conversationId, Guid messageId, string comment, string? currentSessionId = null)
     {
         var request = new UpdateCommentRequest { Comment = comment };
-        var response = await httpClient.PutAsJsonAsync($"/api/conversations/{conversationId}/messages/{messageId}/comment", request);
+        var url = BuildFeedbackUrl(conversationId, messageId, "comment", currentSessionId);
+        var response = await httpClient.PutAsJsonAsync(url, request);
         return response.IsSuccessStatusCode;
     }
 
@@ -105,5 +107,13 @@ public class ConversationClient(HttpClient httpClient)
         }
 
         return await response.Content.ReadFromJsonAsync<RateLimitStatus>();
+    }
+
+    private static string BuildFeedbackUrl(Guid conversationId, Guid messageId, string action, string? currentSessionId)
+    {
+        var url = $"/api/conversations/{conversationId}/messages/{messageId}/{action}";
+        return string.IsNullOrWhiteSpace(currentSessionId)
+            ? url
+            : $"{url}?currentSessionId={Uri.EscapeDataString(currentSessionId)}";
     }
 }

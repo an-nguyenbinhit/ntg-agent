@@ -430,7 +430,7 @@ public class ConversationsController : ControllerBase
     /// <param name="request">The reaction update request containing the new reaction type.</param>
     /// <returns>An <see cref="IActionResult"/> indicating the result of the operation.</returns>
     [HttpPut("{id}/messages/{messageId}/reaction")]
-    public async Task<IActionResult> UpdateMessageReaction(Guid id, Guid messageId, [FromBody] UpdateReactionRequest request)
+    public async Task<IActionResult> UpdateMessageReaction(Guid id, Guid messageId, [FromBody] UpdateReactionRequest request, [FromQuery] string? currentSessionId = null)
     {
         var userId = User.GetUserId();
         var message = await _context.ChatMessages
@@ -446,10 +446,13 @@ public class ConversationsController : ControllerBase
         }
         else
         {
-            // For anonymous users, we need session validation but that would require session ID
-            // For now, allow updates to assistant messages only
-            if (message.Role != ChatRole.Assistant) return Unauthorized();
+            if (!Guid.TryParse(currentSessionId, out var sessionId) || message.Conversation.SessionId != sessionId)
+            {
+                return Unauthorized();
+            }
         }
+
+        if (message.Role != ChatRole.Assistant) return BadRequest("Feedback can only be applied to assistant messages.");
 
         message.Reaction = request.Reaction;
         message.UpdatedAt = DateTime.UtcNow;
@@ -466,7 +469,7 @@ public class ConversationsController : ControllerBase
     /// <param name="request">The comment update request containing the new comment text.</param>
     /// <returns>An <see cref="IActionResult"/> indicating the result of the operation.</returns>
     [HttpPut("{id}/messages/{messageId}/comment")]
-    public async Task<IActionResult> UpdateMessageComment(Guid id, Guid messageId, [FromBody] UpdateCommentRequest request)
+    public async Task<IActionResult> UpdateMessageComment(Guid id, Guid messageId, [FromBody] UpdateCommentRequest request, [FromQuery] string? currentSessionId = null)
     {
         var userId = User.GetUserId();
         var message = await _context.ChatMessages
@@ -482,10 +485,13 @@ public class ConversationsController : ControllerBase
         }
         else
         {
-            // For anonymous users, we need session validation but that would require session ID
-            // For now, allow updates to assistant messages only
-            if (message.Role != ChatRole.Assistant) return Unauthorized();
+            if (!Guid.TryParse(currentSessionId, out var sessionId) || message.Conversation.SessionId != sessionId)
+            {
+                return Unauthorized();
+            }
         }
+
+        if (message.Role != ChatRole.Assistant) return BadRequest("Feedback can only be applied to assistant messages.");
 
         message.UserComment = request.Comment;
         message.UpdatedAt = DateTime.UtcNow;

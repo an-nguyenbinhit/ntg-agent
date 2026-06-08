@@ -49,19 +49,22 @@ public class AskHrStreamServiceTests
                 42));
 
         _answerService
-            .Setup(x => x.AnswerAsync(request, authorization, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(answer);
+            .Setup(x => x.StreamAnswerAsync(request, authorization, It.IsAny<CancellationToken>()))
+            .Returns(Stream(
+                new AskHrStreamEvent(AskHrStreamEventType.Citation, Citation: citation),
+                new AskHrStreamEvent(AskHrStreamEventType.Token, Content: answer.AnswerText),
+                new AskHrStreamEvent(AskHrStreamEventType.Done, Answer: answer)));
 
         var events = await CollectAsync(_streamService.StreamAnswerAsync(request, authorization));
 
         Assert.That(events.Select(x => x.Type), Is.EqualTo(new[]
         {
-            AskHrStreamEventType.Token,
             AskHrStreamEventType.Citation,
+            AskHrStreamEventType.Token,
             AskHrStreamEventType.Done
         }));
-        Assert.That(events[0].Content, Is.EqualTo(answer.AnswerText));
-        Assert.That(events[1].Citation, Is.SameAs(citation));
+        Assert.That(events[0].Citation, Is.SameAs(citation));
+        Assert.That(events[1].Content, Is.EqualTo(answer.AnswerText));
         Assert.That(events[2].Answer, Is.SameAs(answer));
     }
 
@@ -71,8 +74,8 @@ public class AskHrStreamServiceTests
         var request = new AskHrRequest(Guid.NewGuid(), "Annual leave?");
         var authorization = AuthorizationContext.Anonymous();
         _answerService
-            .Setup(x => x.AnswerAsync(request, authorization, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("boom"));
+            .Setup(x => x.StreamAnswerAsync(request, authorization, It.IsAny<CancellationToken>()))
+            .Returns(FailingStream());
 
         var events = await CollectAsync(_streamService.StreamAnswerAsync(request, authorization));
 
@@ -90,5 +93,23 @@ public class AskHrStreamServiceTests
         }
 
         return events;
+    }
+
+    private static async IAsyncEnumerable<AskHrStreamEvent> Stream(params AskHrStreamEvent[] events)
+    {
+        foreach (var streamEvent in events)
+        {
+            await Task.Yield();
+            yield return streamEvent;
+        }
+    }
+
+    private static async IAsyncEnumerable<AskHrStreamEvent> FailingStream()
+    {
+        await Task.Yield();
+        throw new InvalidOperationException("boom");
+        #pragma warning disable CS0162
+        yield return new AskHrStreamEvent(AskHrStreamEventType.Done);
+        #pragma warning restore CS0162
     }
 }

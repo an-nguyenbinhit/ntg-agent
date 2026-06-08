@@ -15,7 +15,14 @@ public sealed record ModelCompletionResponse(
     ModelRouteDto Route,
     ChatResponse? RawResponse = null);
 
+public sealed record ModelStreamResponse(
+    string TextDelta,
+    ModelRouteDto Route,
+    ChatResponseUpdate? RawUpdate = null);
+
 public interface IModelGateway
 {
     Task<ModelCompletionResponse> CompleteAsync(ModelCompletionRequest request, CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<ModelStreamResponse> StreamCompleteAsync(ModelCompletionRequest request, CancellationToken cancellationToken = default);
 }

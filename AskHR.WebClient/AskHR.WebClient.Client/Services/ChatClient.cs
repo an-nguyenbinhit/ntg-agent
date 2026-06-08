@@ -4,6 +4,7 @@ using AskHR.WebClient.Client.Dtos;
 using System.Globalization;
 using AskHR.Common.Dtos.Agents;
 using AskHR.Common.Dtos;
+using AskHR.Common.Dtos.Answers;
 
 namespace AskHR.WebClient.Client.Services;
 
@@ -74,6 +75,29 @@ public class ChatClient(HttpClient httpClient)
         {
             if (item is not null)
                 yield return item;
+        }
+    }
+
+    public async IAsyncEnumerable<AskHrStreamEvent> InvokeAskHrStreamAsync(
+        AskHrRequest request,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/answers/stream")
+        {
+            Content = JsonContent.Create(request)
+        };
+        using var response = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var stream = response.Content.ReadFromJsonAsAsyncEnumerable<AskHrStreamEvent>(cancellationToken: cancellationToken);
+        if (stream is null) yield break;
+
+        await foreach (var item in stream)
+        {
+            if (item is not null)
+            {
+                yield return item;
+            }
         }
     }
 

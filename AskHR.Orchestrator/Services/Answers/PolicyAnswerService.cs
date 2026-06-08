@@ -1,15 +1,20 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using AskHR.Common.Dtos.Answers;
 using AskHR.Common.Dtos.Audit;
 using AskHR.Common.Dtos.ModelRouting;
 using AskHR.Common.Dtos.Security;
+using AskHR.Orchestrator.Data;
+using AskHR.Orchestrator.Models.Chat;
 using AskHR.Orchestrator.Services.Audit;
+using AskHR.Orchestrator.Services.Escalation;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.ModelRouting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.KernelMemory;
 
 namespace AskHR.Orchestrator.Services.Answers;
@@ -20,26 +25,36 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
     private const string TagSourcePath = "sourcePath";
     private const string TagSourceType = "sourceType";
     private const string TagSourceUrl = "sourceUrl";
+    private const string HandoffMessagePrefix = "This topic needs a human HR advisor.";
 
     private readonly IKnowledgeService _knowledgeService;
     private readonly IModelGateway _modelGateway;
+    private readonly AgentDbContext _context;
     private readonly IAuditEventSink _auditEventSink;
     private readonly IAuditTextProtector _auditTextProtector;
+    private readonly ISeverityClassifier _severityClassifier;
+    private readonly IWarmHandoffService _warmHandoffService;
     private readonly IOptions<AnswerPipelineOptions> _options;
     private readonly ILogger<PolicyAnswerService> _logger;
 
     public PolicyAnswerService(
         IKnowledgeService knowledgeService,
         IModelGateway modelGateway,
+        AgentDbContext context,
         IAuditEventSink auditEventSink,
         IAuditTextProtector auditTextProtector,
+        ISeverityClassifier severityClassifier,
+        IWarmHandoffService warmHandoffService,
         IOptions<AnswerPipelineOptions> options,
         ILogger<PolicyAnswerService> logger)
     {
         _knowledgeService = knowledgeService ?? throw new ArgumentNullException(nameof(knowledgeService));
         _modelGateway = modelGateway ?? throw new ArgumentNullException(nameof(modelGateway));
+        _context = context ?? throw new ArgumentNullException(nameof(context));
         _auditEventSink = auditEventSink ?? throw new ArgumentNullException(nameof(auditEventSink));
         _auditTextProtector = auditTextProtector ?? throw new ArgumentNullException(nameof(auditTextProtector));
+        _severityClassifier = severityClassifier ?? throw new ArgumentNullException(nameof(severityClassifier));
+        _warmHandoffService = warmHandoffService ?? throw new ArgumentNullException(nameof(warmHandoffService));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -49,6 +64,23 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         AuthorizationContext authorization,
         CancellationToken cancellationToken = default)
     {
+        AskHrAnswerResponse? finalAnswer = null;
+        await foreach (var streamEvent in StreamAnswerAsync(request, authorization, cancellationToken))
+        {
+            if (streamEvent.Answer is not null)
+            {
+                finalAnswer = streamEvent.Answer;
+            }
+        }
+
+        return finalAnswer ?? throw new InvalidOperationException("Answer pipeline did not produce a final answer.");
+    }
+
+    public async IAsyncEnumerable<AskHrStreamEvent> StreamAnswerAsync(
+        AskHrRequest request,
+        AuthorizationContext authorization,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authorization);
 
@@ -57,64 +89,173 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             throw new ArgumentException("A valid agentId is required.", nameof(request));
         }
 
+        var timer = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(request.Question))
         {
-            return await FallbackAsync(request, authorization, "empty-question", null, null, Stopwatch.StartNew(), cancellationToken);
+            var fallback = await CompleteFallbackAsync(request, authorization, "empty-question", null, null, [], timer, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(fallback.AnswerText))
+            {
+                yield return new AskHrStreamEvent(AskHrStreamEventType.Token, Content: fallback.AnswerText);
+            }
+
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Done,
+                Answer: fallback,
+                ConversationId: fallback.ConversationId,
+                MessageId: fallback.MessageId);
+            yield break;
         }
 
-        var timer = Stopwatch.StartNew();
+        if (await IsConversationFrozenAsync(request, cancellationToken))
+        {
+            var frozenClassification = new SeverityClassification(EscalationSeverity.P1, "Sensitive HR issue", "conversation-frozen", RequiresWarmHandoff: true);
+            var handoff = new WarmHandoffResult(
+                $"handoff-{Guid.NewGuid():N}",
+                "This conversation is already paused for HR follow-up. I will not continue automated answers in this thread.",
+                []);
+            var frozenResponse = await CompleteHandoffAsync(request, authorization, frozenClassification, handoff, timer, cancellationToken);
+
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Handoff,
+                Content: handoff.UserMessage,
+                Answer: frozenResponse,
+                Severity: frozenClassification.Severity.ToString(),
+                ConversationId: frozenResponse.ConversationId,
+                MessageId: frozenResponse.MessageId,
+                HandoffId: handoff.HandoffId);
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Done,
+                Answer: frozenResponse,
+                Severity: frozenClassification.Severity.ToString(),
+                ConversationId: frozenResponse.ConversationId,
+                MessageId: frozenResponse.MessageId,
+                HandoffId: handoff.HandoffId);
+            yield break;
+        }
+
+        var initialClassification = _severityClassifier.Classify(request);
+        if (initialClassification.RequiresWarmHandoff)
+        {
+            var handoff = await _warmHandoffService.CreateAsync(request, authorization, initialClassification, cancellationToken);
+            var handoffResponse = await CompleteHandoffAsync(request, authorization, initialClassification, handoff, timer, cancellationToken);
+
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Handoff,
+                Content: handoff.UserMessage,
+                Answer: handoffResponse,
+                Severity: initialClassification.Severity.ToString(),
+                ConversationId: handoffResponse.ConversationId,
+                MessageId: handoffResponse.MessageId,
+                HandoffId: handoff.HandoffId);
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Done,
+                Answer: handoffResponse,
+                Severity: initialClassification.Severity.ToString(),
+                ConversationId: handoffResponse.ConversationId,
+                MessageId: handoffResponse.MessageId,
+                HandoffId: handoff.HandoffId);
+            yield break;
+        }
+
         var searchResult = await _knowledgeService.SearchAsync(request.Question, request.AgentId, authorization, cancellationToken);
         var citations = ExtractCitations(searchResult)
             .Where(x => x.Relevance >= _options.Value.MinRelevance)
             .OrderByDescending(x => x.Relevance)
             .Take(Math.Max(1, _options.Value.MaxFacts))
             .ToList();
+        var classification = _severityClassifier.Classify(request, citations);
 
         if (citations.Count == 0)
         {
-            return await FallbackAsync(request, authorization, "no-grounding-citations", null, null, timer, cancellationToken);
-        }
-
-        try
-        {
-            var messages = BuildMessages(request.Question, citations);
-            var modelResponse = await _modelGateway.CompleteAsync(
-                new ModelCompletionRequest(
-                    ModelCapability.AnswerGeneration,
-                    request.AgentId,
-                    messages,
-                    new ChatOptions { Temperature = 0 },
-                    "hr-policy"),
-                cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(modelResponse.Text))
+            var fallback = await CompleteFallbackAsync(request, authorization, "no-grounding-citations", null, null, citations, timer, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(fallback.AnswerText))
             {
-                return await FallbackAsync(request, authorization, "empty-model-answer", modelResponse.Route.Provider, modelResponse.Route.Model, timer, cancellationToken);
+                yield return new AskHrStreamEvent(AskHrStreamEventType.Token, Content: fallback.AnswerText, Severity: classification.Severity.ToString());
             }
 
-            var response = new AskHrAnswerResponse(
-                modelResponse.Text,
-                citations,
-                CalculateConfidence(citations),
-                null,
-                new AnswerAuditMetadataDto(
-                    ModelCapability.AnswerGeneration,
-                    modelResponse.Route.Provider,
-                    modelResponse.Route.Model,
-                    modelResponse.Route.RouteName,
-                    _options.Value.RetrievalStrategy,
-                    citations.Count,
-                    null,
-                    timer.ElapsedMilliseconds));
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Done,
+                Answer: fallback,
+                Severity: classification.Severity.ToString(),
+                ConversationId: fallback.ConversationId,
+                MessageId: fallback.MessageId);
+            yield break;
+        }
 
-            await WriteAuditAsync(request, authorization, response, cancellationToken);
-            return response;
-        }
-        catch (Exception ex)
+        foreach (var citation in citations)
         {
-            _logger.LogWarning(ex, "Answer generation failed for agent {AgentId}", request.AgentId);
-            return await FallbackAsync(request, authorization, "model-generation-failed", null, null, timer, cancellationToken);
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Citation,
+                Citation: citation,
+                Severity: classification.Severity.ToString());
         }
+
+        var answerBuilder = new StringBuilder();
+        string? provider = null;
+        string? model = null;
+        string? routeName = null;
+
+        var messages = BuildMessages(request.Question, citations);
+        await foreach (var modelResponse in _modelGateway.StreamCompleteAsync(
+            new ModelCompletionRequest(
+                ModelCapability.AnswerGeneration,
+                request.AgentId,
+                messages,
+                new ChatOptions { Temperature = 0 },
+                "hr-policy"),
+            cancellationToken))
+        {
+            provider ??= modelResponse.Route.Provider;
+            model ??= modelResponse.Route.Model;
+            routeName ??= modelResponse.Route.RouteName;
+
+            if (!string.IsNullOrEmpty(modelResponse.TextDelta))
+            {
+                answerBuilder.Append(modelResponse.TextDelta);
+                yield return new AskHrStreamEvent(
+                    AskHrStreamEventType.Token,
+                    Content: modelResponse.TextDelta,
+                    Severity: classification.Severity.ToString());
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(answerBuilder.ToString()))
+        {
+            var fallback = await CompleteFallbackAsync(request, authorization, "empty-model-answer", provider, model, citations, timer, cancellationToken);
+            yield return new AskHrStreamEvent(AskHrStreamEventType.Token, Content: fallback.AnswerText, Severity: classification.Severity.ToString());
+            yield return new AskHrStreamEvent(
+                AskHrStreamEventType.Done,
+                Answer: fallback,
+                Severity: classification.Severity.ToString(),
+                ConversationId: fallback.ConversationId,
+                MessageId: fallback.MessageId);
+            yield break;
+        }
+
+        var response = new AskHrAnswerResponse(
+            answerBuilder.ToString().Trim(),
+            citations,
+            CalculateConfidence(citations),
+            null,
+            new AnswerAuditMetadataDto(
+                ModelCapability.AnswerGeneration,
+                provider ?? "unknown",
+                model ?? "unknown",
+                routeName,
+                _options.Value.RetrievalStrategy,
+                citations.Count,
+                null,
+                timer.ElapsedMilliseconds));
+
+        response = await PersistConversationTurnAsync(request, authorization, response, cancellationToken);
+        await WriteAuditAsync(request, authorization, response, cancellationToken);
+
+        yield return new AskHrStreamEvent(
+            AskHrStreamEventType.Done,
+            Answer: response,
+            Severity: classification.Severity.ToString(),
+            ConversationId: response.ConversationId,
+            MessageId: response.MessageId);
     }
 
     private List<ChatMessage> BuildMessages(string question, List<AnswerCitationDto> citations)
@@ -147,18 +288,19 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         ];
     }
 
-    private async Task<AskHrAnswerResponse> FallbackAsync(
+    private async Task<AskHrAnswerResponse> CompleteFallbackAsync(
         AskHrRequest request,
         AuthorizationContext authorization,
         string fallbackReason,
         string? provider,
         string? model,
+        List<AnswerCitationDto> citations,
         Stopwatch timer,
         CancellationToken cancellationToken)
     {
         var response = new AskHrAnswerResponse(
             _options.Value.FallbackAnswer,
-            [],
+            citations,
             0,
             fallbackReason,
             new AnswerAuditMetadataDto(
@@ -167,10 +309,41 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
                 model ?? "none",
                 null,
                 _options.Value.RetrievalStrategy,
-                0,
+                citations.Count,
                 fallbackReason,
                 timer.ElapsedMilliseconds));
 
+        response = await PersistConversationTurnAsync(request, authorization, response, cancellationToken);
+        await WriteAuditAsync(request, authorization, response, cancellationToken);
+        return response;
+    }
+
+    private async Task<AskHrAnswerResponse> CompleteHandoffAsync(
+        AskHrRequest request,
+        AuthorizationContext authorization,
+        SeverityClassification classification,
+        WarmHandoffResult handoff,
+        Stopwatch timer,
+        CancellationToken cancellationToken)
+    {
+        var response = new AskHrAnswerResponse(
+            handoff.UserMessage,
+            [],
+            0,
+            "warm-handoff",
+            new AnswerAuditMetadataDto(
+                ModelCapability.AnswerGeneration,
+                "none",
+                "none",
+                null,
+                _options.Value.RetrievalStrategy,
+                0,
+                $"{classification.Severity}:{classification.Reason}",
+                timer.ElapsedMilliseconds),
+            IsHandoff: true,
+            HandoffId: handoff.HandoffId);
+
+        response = await PersistConversationTurnAsync(request, authorization, response, cancellationToken);
         await WriteAuditAsync(request, authorization, response, cancellationToken);
         return response;
     }
@@ -196,6 +369,104 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             DateTimeOffset.UtcNow);
 
         await _auditEventSink.WriteAsync(auditEvent, cancellationToken);
+    }
+
+    private async Task<AskHrAnswerResponse> PersistConversationTurnAsync(
+        AskHrRequest request,
+        AuthorizationContext authorization,
+        AskHrAnswerResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(request.ThreadId, out var conversationId))
+        {
+            return response;
+        }
+
+        var conversation = await ResolveConversationAsync(conversationId, request, authorization, cancellationToken);
+        if (conversation is null)
+        {
+            return response;
+        }
+
+        var now = DateTime.UtcNow;
+        var userMessage = new PChatMessage
+        {
+            UserId = authorization.UserId,
+            Conversation = conversation,
+            ConversationId = conversation.Id,
+            AgentId = request.AgentId,
+            Content = request.Question,
+            Role = ChatRole.User,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var assistantMessage = new PChatMessage
+        {
+            UserId = authorization.UserId,
+            Conversation = conversation,
+            ConversationId = conversation.Id,
+            AgentId = request.AgentId,
+            Content = response.AnswerText,
+            Role = ChatRole.Assistant,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        conversation.UpdatedAt = now;
+        if (string.Equals(conversation.Name, "New Conversation", StringComparison.OrdinalIgnoreCase))
+        {
+            conversation.Name = BuildConversationName(request.Question);
+        }
+
+        _context.ChatMessages.AddRange(userMessage, assistantMessage);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return response with
+        {
+            ConversationId = conversation.Id,
+            MessageId = assistantMessage.Id
+        };
+    }
+
+    private async Task<Conversation?> ResolveConversationAsync(
+        Guid conversationId,
+        AskHrRequest request,
+        AuthorizationContext authorization,
+        CancellationToken cancellationToken)
+    {
+        if (!authorization.IsAnonymous && authorization.UserId is Guid userId)
+        {
+            return await _context.Conversations
+                .FirstOrDefaultAsync(x => x.Id == conversationId && x.UserId == userId, cancellationToken);
+        }
+
+        if (Guid.TryParse(request.SessionId, out var sessionId))
+        {
+            return await _context.Conversations
+                .FirstOrDefaultAsync(x => x.Id == conversationId && x.SessionId == sessionId, cancellationToken);
+        }
+
+        return null;
+    }
+
+    private async Task<bool> IsConversationFrozenAsync(AskHrRequest request, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(request.ThreadId, out var conversationId))
+        {
+            return false;
+        }
+
+        return await _context.ChatMessages
+            .AnyAsync(x =>
+                x.ConversationId == conversationId
+                && x.Role == ChatRole.Assistant
+                && x.Content.StartsWith(HandoffMessagePrefix), cancellationToken);
+    }
+
+    private static string BuildConversationName(string question)
+    {
+        var normalized = string.Join(' ', question.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length <= 60 ? normalized : normalized[..60];
     }
 
     private static List<AnswerCitationDto> ExtractCitations(SearchResult searchResult)

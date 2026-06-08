@@ -1,5 +1,6 @@
 ?@using AskHR.Common.Dtos.Chats
 @using AskHR.Common.Dtos.Enums
+@using AskHR.Common.Dtos.Answers
 @using AskHR.Common.Dtos.SharedConversations
 @using AskHR.Common.Dtos.Agents
 @using AskHR.Common.Dtos.AnonymousSessions
@@ -60,14 +61,14 @@ else if (ConversationId.HasValue)
                     <EnhancedMarkdown Value="@item.Message" @ref="MarkdownSetValue"
                                       CssClass="p-2 rounded rounded-4 border chat-response"></EnhancedMarkdown>
                     <div class="chat-actions mt-2 ms-2">
-                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="@(() => ToggleLike(item))" title="Like">
+                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="@(() => ToggleLike(item))" title="Like" disabled="@(item.Id == Guid.Empty)">
                             <i class="bi @(item.Reaction == ReactionType.Like ? "bi-hand-thumbs-up-fill" : "bi-hand-thumbs-up")"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary me-2" @onclick="@(() => ToggleDislike(item))"
-                                title="Dislike">
+                                title="Dislike" disabled="@(item.Id == Guid.Empty)">
                             <i class="bi @(item.Reaction == ReactionType.Dislike ? "bi-hand-thumbs-down-fill" : "bi-hand-thumbs-down")"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="@(() => ToggleComment(item))" title="Comment">
+                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="@(() => ToggleComment(item))" title="Comment" disabled="@(item.Id == Guid.Empty)">
                             <i class="bi bi-chat-dots"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => ShowShareMessageModal(item))" title="Share this message">
@@ -149,9 +150,11 @@ else if (ConversationId.HasValue)
                     </button>
                     <input type="text" id="userInput" class="chat-input-field" @bind="userInput"
                             autocomplete="off" spellcheck="false" autocorrect="off"
-                            autocapitalize="off" placeholder="Type your message..." />
+                            autocapitalize="off" placeholder="@(isConversationFrozen ? "HR handoff is active" : "Type your message...")"
+                            disabled="@(isSending || isConversationFrozen)" />
                     <SpeechToText Language="@Language" OnTranscription="HandleTranscription" />
-                    <button class="chat-input-icon-btn" type="submit" aria-label="Send message" title="Send message">
+                    <button class="chat-input-icon-btn" type="submit" aria-label="Send message" title="Send message"
+                            disabled="@(isSending || isConversationFrozen)">
                         <i class="bi bi-send"></i>
                     </button>
                 </div>
@@ -213,10 +216,11 @@ else
                         </button>
                         <input type="text" id="userInput" class="chat-input-field" @bind="userInput"
                                autocomplete="off" spellcheck="false" autocorrect="off"
-                               autocapitalize="off" placeholder="Ask anything" />
+                               autocapitalize="off" placeholder="@(isConversationFrozen ? "HR handoff is active" : "Ask anything")"
+                               disabled="@(isSending || isConversationFrozen)" />
                         <SpeechToText Language="@Language" OnTranscription="HandleTranscription" />
                         <button class="btn" type="submit" aria-label="Send message"
-                                title="Send message">
+                                title="Send message" disabled="@(isSending || isConversationFrozen)">
                             <i class="bi bi-send fs-6"></i>
                         </button>
                     </div>
@@ -321,6 +325,8 @@ else
     private bool documentIntelligenceEnabled = false;
     private RateLimitStatus? rateLimitStatus = null;
     private bool showRateLimitModal = false;
+    private bool isSending = false;
+    private bool isConversationFrozen = false;
     private int messagesSinceLastCheck = 0;
     private const int RATE_LIMIT_CHECK_INTERVAL = 5; // Check server every 5 messages
     private string liveThinkingContent = string.Empty;
@@ -370,6 +376,10 @@ else
                             Reaction = item.Reaction,
                             UserComment = item.UserComment
                         });
+                    if (item.Role == "assistant" && IsHandoffMessage(item.Content))
+                    {
+                        isConversationFrozen = true;
+                    }
                 }
                 StateHasChanged();
             }
@@ -399,7 +409,7 @@ else
 
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(userInput))
+        if (isSending || isConversationFrozen || string.IsNullOrWhiteSpace(userInput))
         {
             return;
         }
@@ -430,73 +440,24 @@ else
         chatHistory.Add(new ChatMessageItem { IsAssistant = false, IsUser = true, Message = query });
 
 
-        // Agent "thinking"
-        var response = new ChatMessageItem { IsAssistant = true, IsUser = false, Message = "One moment, the agent is thinking ..." };
+        var response = new ChatMessageItem { IsAssistant = true, IsUser = false, Message = "Searching HR documents ..." };
         chatHistory.Add(response);
         userInput = string.Empty;
+        isSending = true;
         StateHasChanged();
-        // Yield so Blazor renders the "One moment..." placeholder before it is cleared below.
-        // Without this, subsequent messages skip the render because response.Message = string.Empty
-        // executes synchronously before the first await in the try block.
         await Task.Delay(1);
 
         try
         {
-            // ?? Send text + image to backend
-            // Snapshot uploads into a new list so that uploadItems.Clear() below
-            // does not mutate the collection that request.Documents references.
-            var request = new PromptRequest<UploadItemClient>(query, ConversationId.Value,
-                currentSessionId, uploadItems.ToList(), selectedAgentId);
-
             response.Message = string.Empty;
-            uploadItems.Clear();
-
-            liveThinkingContent = string.Empty;
-            isThinking = false;
-            thinkingStartedAt = null;
-            var liveThinkingBuilder = new StringBuilder();
-            DateTime? thinkingEndedAt = null;
-
-            await foreach (var item in ChatClient.InvokeStreamAsync(request))
+            if (uploadItems.Any())
             {
-                if (item.ContentType == PromptContentType.Thinking)
-                {
-                    // Record start timestamp on the first thinking chunk
-                    thinkingStartedAt ??= DateTime.UtcNow;
-                    isThinking = true;
-                    liveThinkingBuilder.Append(item.Content);
-                    liveThinkingContent = liveThinkingBuilder.ToString();
-                    StateHasChanged();
-                }
-                else
-                {
-                    if (isThinking)
-                    {
-                        // Record end timestamp at the thinking?answer transition
-                        thinkingEndedAt = DateTime.UtcNow;
-                        // Transition: commit the "Thought process" render before streaming main content
-                        isThinking = false;
-                        StateHasChanged();
-                        await Task.Delay(1);
-                    }
-                    response.Message += item.Content;
-                    await Task.Delay(1);
-                    if (MarkdownSetValue is not null)
-                        await MarkdownSetValue.SetValue(response.Message);
-                }
+                await StreamAgentChatAsync(query, response);
             }
-
-            // Finalize thinking state before the final render
-            response.ThinkingContent = liveThinkingBuilder.Length > 0 ? liveThinkingBuilder.ToString() : null;
-            // Calculate duration from the tracked timestamps (server also stores this, but we set it here
-            // so the completed block shows the time immediately without a page reload)
-            response.ThinkingDurationMs = thinkingStartedAt.HasValue
-                ? (int)((thinkingEndedAt ?? DateTime.UtcNow) - thinkingStartedAt.Value).TotalMilliseconds
-                : null;
-            liveThinkingContent = string.Empty;
-            isThinking = false;
-            // Ensure the UI reflects the final streamed state for all users/conversation types
-            StateHasChanged();
+            else
+            {
+                await StreamAskHrChatAsync(query, response);
+            }
 
             // Update rate limit count client-side for better performance
             if (!isAuthenticated && rateLimitStatus != null)
@@ -558,7 +519,159 @@ else
             response.Message = "An error occurred while sending your message. Please try again.";
             StateHasChanged();
         }
+        finally
+        {
+            isSending = false;
+            StateHasChanged();
+        }
     }
+
+    private async Task StreamAskHrChatAsync(string query, ChatMessageItem response)
+    {
+        var request = new AskHrRequest(
+            selectedAgentId,
+            query,
+            Channel: "web",
+            ThreadId: ConversationId?.ToString(),
+            SessionId: currentSessionId);
+        var citations = new List<AnswerCitationDto>();
+
+        await foreach (var streamEvent in ChatClient.InvokeAskHrStreamAsync(request))
+        {
+            if (streamEvent.Type == AskHrStreamEventType.Citation && streamEvent.Citation is not null)
+            {
+                citations.Add(streamEvent.Citation);
+                continue;
+            }
+
+            if (streamEvent.Type == AskHrStreamEventType.Token && !string.IsNullOrEmpty(streamEvent.Content))
+            {
+                response.Message += streamEvent.Content;
+                await UpdateLiveMarkdownAsync(response.Message);
+                continue;
+            }
+
+            if (streamEvent.Type == AskHrStreamEventType.Handoff)
+            {
+                response.Message = streamEvent.Content ?? streamEvent.Answer?.AnswerText ?? "This topic has been handed off to HR.";
+                response.Id = streamEvent.MessageId ?? streamEvent.Answer?.MessageId ?? response.Id;
+                isConversationFrozen = true;
+                await UpdateLiveMarkdownAsync(response.Message);
+                continue;
+            }
+
+            if (streamEvent.Type == AskHrStreamEventType.Error)
+            {
+                response.Message = streamEvent.Content ?? "The answer pipeline failed. Please try again.";
+                await UpdateLiveMarkdownAsync(response.Message);
+                continue;
+            }
+
+            if (streamEvent.Type == AskHrStreamEventType.Done && streamEvent.Answer is not null)
+            {
+                response.Id = streamEvent.Answer.MessageId ?? streamEvent.MessageId ?? response.Id;
+                if (string.IsNullOrWhiteSpace(response.Message))
+                {
+                    response.Message = streamEvent.Answer.AnswerText;
+                }
+
+                if (streamEvent.Answer.IsHandoff)
+                {
+                    isConversationFrozen = true;
+                }
+
+                response.Message += BuildCitationAppendix(citations);
+                await UpdateLiveMarkdownAsync(response.Message);
+            }
+        }
+    }
+
+    private async Task StreamAgentChatAsync(string query, ChatMessageItem response)
+    {
+        var request = new PromptRequest<UploadItemClient>(query, ConversationId!.Value,
+            currentSessionId, uploadItems.ToList(), selectedAgentId);
+        uploadItems.Clear();
+
+        liveThinkingContent = string.Empty;
+        isThinking = false;
+        thinkingStartedAt = null;
+        var liveThinkingBuilder = new StringBuilder();
+        DateTime? thinkingEndedAt = null;
+
+        await foreach (var item in ChatClient.InvokeStreamAsync(request))
+        {
+            if (item.ContentType == PromptContentType.Thinking)
+            {
+                thinkingStartedAt ??= DateTime.UtcNow;
+                isThinking = true;
+                liveThinkingBuilder.Append(item.Content);
+                liveThinkingContent = liveThinkingBuilder.ToString();
+                StateHasChanged();
+            }
+            else
+            {
+                if (isThinking)
+                {
+                    thinkingEndedAt = DateTime.UtcNow;
+                    isThinking = false;
+                    StateHasChanged();
+                    await Task.Delay(1);
+                }
+                response.Message += item.Content;
+                await UpdateLiveMarkdownAsync(response.Message);
+            }
+        }
+
+        response.ThinkingContent = liveThinkingBuilder.Length > 0 ? liveThinkingBuilder.ToString() : null;
+        response.ThinkingDurationMs = thinkingStartedAt.HasValue
+            ? (int)((thinkingEndedAt ?? DateTime.UtcNow) - thinkingStartedAt.Value).TotalMilliseconds
+            : null;
+        liveThinkingContent = string.Empty;
+        isThinking = false;
+        StateHasChanged();
+    }
+
+    private async Task UpdateLiveMarkdownAsync(string value)
+    {
+        await Task.Delay(1);
+        if (MarkdownSetValue is not null)
+        {
+            await MarkdownSetValue.SetValue(value);
+        }
+        StateHasChanged();
+    }
+
+    private static string BuildCitationAppendix(IReadOnlyList<AnswerCitationDto> citations)
+    {
+        if (citations.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine();
+        builder.AppendLine();
+        builder.AppendLine("Sources:");
+        for (var i = 0; i < citations.Count; i++)
+        {
+            var citation = citations[i];
+            builder.Append("- [")
+                .Append(i + 1)
+                .Append("] ")
+                .Append(citation.DocumentName);
+            if (!string.IsNullOrWhiteSpace(citation.SourceUrl))
+            {
+                builder.Append(" - ").Append(citation.SourceUrl);
+            }
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool IsHandoffMessage(string value) =>
+        value.StartsWith("This topic needs a human HR advisor.", StringComparison.Ordinal)
+        || value.StartsWith("This conversation is already paused for HR follow-up.", StringComparison.Ordinal);
 
     private void HandleTranscription(string result)
     {
@@ -613,7 +726,7 @@ else
     private async Task ToggleLike(ChatMessageItem message)
     {
         var newReaction = message.Reaction == ReactionType.Like ? ReactionType.None : ReactionType.Like;
-        var success = await ConversationClient.UpdateMessageReactionAsync(ConversationId!.Value, message.Id, newReaction);
+        var success = await ConversationClient.UpdateMessageReactionAsync(ConversationId!.Value, message.Id, newReaction, currentSessionId);
         if (success)
         {
             message.Reaction = newReaction;
@@ -637,7 +750,7 @@ else
     private async Task ToggleDislike(ChatMessageItem message)
     {
         var newReaction = message.Reaction == ReactionType.Dislike ? ReactionType.None : ReactionType.Dislike;
-        var success = await ConversationClient.UpdateMessageReactionAsync(ConversationId!.Value, message.Id, newReaction);
+        var success = await ConversationClient.UpdateMessageReactionAsync(ConversationId!.Value, message.Id, newReaction, currentSessionId);
         if (success)
         {
             message.Reaction = newReaction;
@@ -662,7 +775,7 @@ else
 
     private async Task SaveComment(ChatMessageItem message)
     {
-        var success = await ConversationClient.UpdateMessageCommentAsync(ConversationId!.Value, message.Id, currentComment);
+        var success = await ConversationClient.UpdateMessageCommentAsync(ConversationId!.Value, message.Id, currentComment, currentSessionId);
         if (success)
         {
             message.UserComment = currentComment;
