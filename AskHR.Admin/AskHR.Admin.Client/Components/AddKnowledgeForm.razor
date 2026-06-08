@@ -133,11 +133,11 @@
                     <i class="bi bi-file-earmark-arrow-up display-4 text-muted"></i>
                 </div>
                 <h6 class="mb-2">Drag and drop files here or click to browse</h6>
-                <p class="text-muted small mb-3">@FileTypeService.GetSupportedFormatsDescription()</p>
+                <p class="text-muted small mb-3">@FileTypeService.GetSupportedKnowledgeFormatsDescription()</p>
                 <InputFile OnChange="HandleFileUpload" 
                           class="form-control" 
                           multiple 
-                          accept="@FileTypeService.GetSupportedFileExtensions()" 
+                          accept="@FileTypeService.GetSupportedKnowledgeFileExtensions()" 
                           id="fileUpload" />
             </div>
         </div>

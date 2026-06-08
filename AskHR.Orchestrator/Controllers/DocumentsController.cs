@@ -117,6 +117,15 @@ public class DocumentsController : ControllerBase
             return BadRequest("No files uploaded.");
         }
 
+        var unsupportedFiles = files
+            .Where(file => file.Length > 0 && !FileTypeService.IsSupportedKnowledgeFile(file.FileName))
+            .Select(file => file.FileName)
+            .ToList();
+        if (unsupportedFiles.Count > 0)
+        {
+            return BadRequest($"Unsupported knowledge file type: {string.Join(", ", unsupportedFiles)}. {FileTypeService.GetSupportedKnowledgeFormatsDescription()}.");
+        }
+
         var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
 
         tags ??= [];

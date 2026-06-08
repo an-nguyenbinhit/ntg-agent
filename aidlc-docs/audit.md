@@ -6,6 +6,14 @@
 
 ---
 
+## Construction: S-0201 Ingest Document & Citation Metadata
+**Timestamp**: 2026-06-08T02:30:00Z
+**User Input**: "Implementation Plan: tiếp tục phát triển AskHR; hoàn tất Sprint 01 với S-0201 và re-ingest tài liệu; cập nhật AI-DLC state; sau đó chuẩn bị Sprint 02."
+**AI Response**: "Resume AI-DLC project context, đọc RTK và AI-DLC workflow rules, rà soát Sprint 01/backlog/UoB docs và existing Kernel Memory ingestion code. Implemented S-0201 guardrails trên code hiện có: Admin upload UI và server API chỉ nhận knowledge files `.docx`, `.md`, `.pdf`; KernelMemoryKnowledge stamp citation metadata tags (`documentName`, `sourceType`, `sourcePath`, `sourceUrl`) cùng permission metadata. Added TASK-0201 task doc, updated sprint-01 và aidlc-state để phản ánh Construction/Sprint 01 status, giữ re-ingest là blocked operational data migration pending corpus/index inventory. Targeted Orchestrator tests pass bằng isolated artifacts path vì process AskHR.Orchestrator đang chạy lock default bin output."
+**Context**: Construction phase - Sprint 01 S-0201 ingestion/citation metadata completion và AI-DLC state sync.
+
+---
+
 ## Commit Request
 **Timestamp**: 2026-06-06T17:29:53Z
 **User Input**: "commit"

@@ -299,6 +299,40 @@ public class KernelMemoryKnowledgeTests
     }
 
     [Test]
+    public async Task ImportDocumentAsync_AddsCitationMetadataTags()
+    {
+        // Arrange
+        var fileName = "Leave Policy.md";
+        var expectedDocumentId = "test-doc-id";
+        TagCollection? capturedTags = null;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("Leave policy content"));
+
+        _mockKernelMemory.Setup(m => m.ImportDocumentAsync(
+            It.IsAny<Stream>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<TagCollection?>(),
+            It.IsAny<string?>(),
+            It.IsAny<IEnumerable<string>?>(),
+            It.IsAny<Microsoft.KernelMemory.Context.IContext?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<Stream, string?, string?, TagCollection?, string?, IEnumerable<string>?, Microsoft.KernelMemory.Context.IContext?, CancellationToken>(
+                (_, _, _, tags, _, _, _, _) => capturedTags = tags)
+            .ReturnsAsync(expectedDocumentId);
+
+        // Act
+        var result = await _service.ImportDocumentAsync(stream, fileName, _testAgentId, new List<string> { "hr-policy" });
+
+        // Assert
+        Assert.That(result, Is.EqualTo(expectedDocumentId));
+        Assert.That(capturedTags, Is.Not.Null);
+        Assert.That(HasTag(capturedTags!, "documentName", "Leave Policy.md"), Is.True);
+        Assert.That(HasTag(capturedTags!, "sourceType", "file"), Is.True);
+        Assert.That(HasTag(capturedTags!, "sourcePath", "Leave Policy.md"), Is.True);
+    }
+
+    [Test]
     public async Task ImportDocumentAsync_WithEmptyTags_ReturnsDocumentId()
     {
         // Arrange

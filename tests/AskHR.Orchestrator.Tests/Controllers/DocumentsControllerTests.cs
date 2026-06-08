@@ -221,7 +221,7 @@ public class DocumentsControllerTests
         // Arrange
         var files = new FormFileCollection
         {
-            CreateTestFile("test.txt", "test content")
+            CreateTestFile("policy.md", "test content")
         };
         var tag1Id = Guid.NewGuid();
         var tag2Id = Guid.NewGuid();
@@ -235,11 +235,36 @@ public class DocumentsControllerTests
         Assert.That(okResult, Is.Not.Null);
         var savedDocument = await _context.Documents.FirstOrDefaultAsync();
         Assert.That(savedDocument, Is.Not.Null);
-        Assert.That(savedDocument.Name, Is.EqualTo("test.txt"));
+        Assert.That(savedDocument.Name, Is.EqualTo("policy.md"));
         Assert.That(savedDocument.AgentId, Is.EqualTo(_testAgentId));
         Assert.That(savedDocument.KnowledgeDocId, Is.EqualTo("knowledge-doc-id"));
         var documentTags = await _context.DocumentTags.Where(dt => dt.DocumentId == savedDocument.Id).ToListAsync();
         Assert.That(documentTags, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public async Task UploadDocuments_WhenUnsupportedKnowledgeFile_ReturnsBadRequestAndDoesNotImport()
+    {
+        // Arrange
+        var files = new FormFileCollection
+        {
+            CreateTestFile("notes.txt", "test content")
+        };
+
+        // Act
+        var result = await _controller.UploadDocuments(_testAgentId, files, null, new List<string>());
+
+        // Assert
+        var badRequestResult = result as BadRequestObjectResult;
+        Assert.That(badRequestResult, Is.Not.Null);
+        Assert.That(badRequestResult.Value?.ToString(), Does.Contain("Unsupported knowledge file type: notes.txt"));
+        _mockKnowledgeService.Verify(x => x.ImportDocumentAsync(
+            It.IsAny<Stream>(),
+            It.IsAny<string>(),
+            It.IsAny<Guid>(),
+            It.IsAny<DocumentPermissionMetadata>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(await _context.Documents.CountAsync(), Is.EqualTo(0));
     }
     [Test]
     public async Task UploadDocuments_WhenEmptyFile_SkipsFile()
@@ -248,7 +273,7 @@ public class DocumentsControllerTests
         var files = new FormFileCollection
         {
             CreateTestFile("empty.txt", ""),
-            CreateTestFile("valid.txt", "valid content")
+            CreateTestFile("valid.md", "valid content")
         };
         _mockKnowledgeService.Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("knowledge-doc-id");

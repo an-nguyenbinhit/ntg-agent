@@ -6,6 +6,17 @@ namespace AskHR.Common.Dtos.Services;
 /// </summary>
 public static class FileTypeService
 {
+    private static readonly string[] SupportedKnowledgeFileExtensions =
+    [
+        ".docx",
+        ".md",
+        ".pdf"
+    ];
+
+    private static readonly HashSet<string> SupportedKnowledgeFileExtensionSet = new(
+        SupportedKnowledgeFileExtensions,
+        StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Gets the MIME content type for a file based on its extension.
     /// </summary>
@@ -341,6 +352,22 @@ public static class FileTypeService
     public static string GetSupportedFormatsDescription()
     {
         return "Supported formats: PDF, Word (.doc/.docx), Excel (.xls/.xlsx), PowerPoint (.ppt/.pptx), OpenDocument (.odt/.ods/.odp), EPUB, Archives (.zip/.rar/.7z/.tar/.gz), Text (.txt/.md/.csv/.rtf), Web (.html/.htm/.xhtml), Data (.json/.jsonld/.xml), Code (.js/.css/.sh), Images, Audio, Video (Max 50MB each)";
+    }
+
+    public static bool IsSupportedKnowledgeFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return !string.IsNullOrWhiteSpace(extension) && SupportedKnowledgeFileExtensionSet.Contains(extension);
+    }
+
+    public static string GetSupportedKnowledgeFileExtensions()
+    {
+        return string.Join(",", SupportedKnowledgeFileExtensions);
+    }
+
+    public static string GetSupportedKnowledgeFormatsDescription()
+    {
+        return "Supported knowledge formats: Word (.docx), Markdown (.md), PDF (Max 50MB each)";
     }
 
     /// <summary>

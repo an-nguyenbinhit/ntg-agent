@@ -3,16 +3,16 @@
 ## Project Information
 
 - **Project**: AskHR / AskHR
-- **Project Type**: Brownfield application with AI-DLC requirements baseline
+- **Project Type**: Brownfield application với AI-DLC requirements baseline
 - **Start Date**: 2026-06-06T00:00:00Z
-- **Current Phase**: INCEPTION
-- **Current Stage**: Requirements Scrum-Readiness Review
+- **Current Phase**: CONSTRUCTION
+- **Current Stage**: Sprint 01 - ổn định RBAC & Index
 
 ## Workspace State
 
 - **Existing Application Code**: Yes
-- **Primary Artifacts**: `aidlc-docs/requirements.md`, `aidlc-docs/units-retrieval-answer.md`, `aidlc-docs/units-security-identity.md`, `aidlc-docs/units-channels.md`, `aidlc-docs/units-governance-ops.md` (8 UoB gom theo chủ đề), `aidlc-docs/ADR-001-agent-runtime.md`
-- **Workspace Root**: `D:\Projects\askhr`
+- **Primary Artifacts**: `aidlc-docs/requirements.md`, `aidlc-docs/units-retrieval-answer.md`, `aidlc-docs/units-security-identity.md`, `aidlc-docs/units-channels.md`, `aidlc-docs/units-governance-ops.md`, `aidlc-docs/ADR-001-agent-runtime.md`, `aidlc-docs/project-management/product-backlog.md`, `aidlc-docs/project-management/sprints/sprint-01.md`
+- **Workspace Root**: `D:\Projects\ntg-agent`
 - **Documentation Directory**: `aidlc-docs/`
 
 ## Extension Configuration
@@ -25,24 +25,28 @@
 
 | Stage | Status | Notes |
 |---|---|---|
-| Workspace Detection | Complete | Existing AskHR .NET application detected; AI-DLC docs define the AskHR requirement baseline inside this repo. |
-| Requirements Analysis | Complete with Sprint-0 inputs | Requirement source and UoB decomposition exist; kickoff decisions are tracked in `requirements.md` §3 and §10. |
-| User Stories | Pending | Scrum decomposition can start from UoB documents after Sprint-0 readiness checks. |
-| Workflow Planning | Pending | Next step is backlog/workflow planning by UoB dependency order. |
-| Application Design | Pending | Needed for domain model, service contracts, infrastructure boundaries and NFR decisions. |
-| Units Generation | Drafted | UoB-01 through UoB-08 are available as business units; engineering units still need Scrum task breakdown. |
+| Workspace Detection | Complete | Đã detect AskHR là ứng dụng .NET brownfield; AI-DLC docs định nghĩa baseline requirement trong repo này. |
+| Requirements Analysis | Complete | Requirement source và UoB decomposition đã có; kickoff decisions được track trong `requirements.md` sections 3 và 10. |
+| User Stories | Complete | Product backlog đã map UoB epics sang stories S-0101..S-0803 trong `project-management/product-backlog.md`. |
+| Workflow Planning | Complete | Sprint sequence và Sprint 01-04 đã có trong `project-management/sprints/`. |
+| Application Design | Drafted | Domain/service boundaries được thể hiện qua UoB docs, ADR-001, `IKnowledgeService`, `AuthorizationContext`, RBAC và Kernel Memory adapter contracts hiện có. |
+| Units Generation | Complete | UoB-01 đến UoB-08 đã có và đã map vào Scrum execution artifacts. |
+| Code Generation | In Progress | Sprint 01 P0 implementation gần hoàn tất: S-0401, S-0402, S-0202, S-0103 và S-0201 đã implemented. |
+| Build and Test | In Progress | Orchestrator unit tests là verification target hiện tại; nếu cần strict AI-DLC closure thì vẫn phải tạo final Construction build/test artifact. |
 
 ## Current Recommendation
 
-Start Scrum decomposition from these epics:
+Sprint 01 implementation đã hoàn tất về mặt chức năng cho RBAC + ingest/index boundaries, nhưng còn một operational data task trước khi Sprint 02 có thể dựa vào retrieval:
 
-1. UoB-04 RBAC / Identity & Access
-2. UoB-02 Ingest & Index HR Documents
-3. UoB-01 Answer Policy Question
-4. UoB-03 Slack Channel
-5. UoB-06 Feedback / Audit / Analytics
-6. UoB-05 Admin Portal / Monitoring
-7. UoB-07 Multi-Provider / Model Configuration
-8. UoB-08 Web Chat Channel
+1. Re-ingest các document đã được index trước khi permission metadata được bổ sung.
+2. Đảm bảo mỗi document re-ingested có `allowedRoles`, `businessUnits` và `sensitivity` metadata.
+3. Treat missing metadata as deny-by-default; không dùng document từ default index cũ cho Sprint 02 answer flows.
 
-Sprint-0 must close the source connector, document template, HR fallback contacts, admin roles, retention approval, RAG latency benchmark and MAF baseline version before implementation stories are committed.
+Trọng tâm engineering sau re-ingest:
+
+1. UoB-01 Answer Policy Question: S-0101, S-0102.
+2. UoB-03 Slack Channel: S-0301, S-0303.
+3. UoB-06 Audit / Analytics: S-0601.
+4. UoB-07 Multi-Provider / Model Configuration: S-0701.
+
+Sprint-0 business inputs vẫn cần owner xác nhận rõ trước khi rollout rộng Sprint 02: HR fallback contacts, document template approval, admin roles, retention approval, RAG latency benchmark và MAF baseline version.

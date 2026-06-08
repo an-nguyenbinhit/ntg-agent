@@ -18,6 +18,10 @@ public class KernelMemoryKnowledge : IKnowledgeService
     private const string TagNameLegalEntities = "legalEntities";
     private const string TagNameApplicableTo = "applicableTo";
     private const string TagNameSensitivity = "sensitivity";
+    private const string TagNameDocumentName = "documentName";
+    private const string TagNameSourcePath = "sourcePath";
+    private const string TagNameSourceType = "sourceType";
+    private const string TagNameSourceUrl = "sourceUrl";
     private const string AnyTagValue = "__any__";
     private const string DenyAllTagValue = "__deny_all__";
 
@@ -33,6 +37,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
     public async Task<string> ImportDocumentAsync(Stream content, string fileName, Guid agentId, DocumentPermissionMetadata permissions, CancellationToken cancellationToken = default)
     {
         var tagCollection = ComposeTags(agentId, permissions);
+        AddCitationTags(tagCollection, fileName, "file", sourcePath: fileName);
         return await _kernelMemory.ImportDocumentAsync(content, fileName, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
     }
 
@@ -84,6 +89,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         }
 
         var tagCollection = ComposeTags(agentId, permissions);
+        AddCitationTags(tagCollection, url, "web", sourceUrl: url);
         var documentId = await _kernelMemory.ImportWebPageAsync(url, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
         return documentId;
     }
@@ -99,6 +105,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         }
 
         var tagCollection = ComposeTags(agentId, permissions);
+        AddCitationTags(tagCollection, fileName, "text", sourcePath: fileName);
 
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
         return await _kernelMemory.ImportDocumentAsync(stream, fileName, index: IndexFor(agentId), tags: tagCollection, cancellationToken: cancellationToken);
@@ -237,6 +244,29 @@ public class KernelMemoryKnowledge : IKnowledgeService
         if (normalized.Count > 0)
         {
             tags.Add(name, normalized.Cast<string?>().ToList());
+        }
+    }
+
+    private static void AddCitationTags(
+        TagCollection tags,
+        string documentName,
+        string sourceType,
+        string? sourcePath = null,
+        string? sourceUrl = null)
+    {
+        AddRawTag(tags, TagNameDocumentName, documentName);
+        AddRawTag(tags, TagNameSourceType, sourceType);
+        // For uploaded/text documents this currently mirrors documentName; future
+        // document sources can set a folder path or connector path here.
+        AddRawTag(tags, TagNameSourcePath, sourcePath);
+        AddRawTag(tags, TagNameSourceUrl, sourceUrl);
+    }
+
+    private static void AddRawTag(TagCollection tags, string name, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            tags.Add(name, [value.Trim()]);
         }
     }
 
