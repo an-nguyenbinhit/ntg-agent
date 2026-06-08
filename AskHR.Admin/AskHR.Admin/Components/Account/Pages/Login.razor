@@ -9,6 +9,7 @@
 @inject ILogger<Login> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Environment
 
 <PageTitle>Log in</PageTitle>
 
@@ -73,6 +74,12 @@
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
+
+        if (Environment.IsDevelopment())
+        {
+            Input.Email = "admin@askhr.com";
+            Input.Password = "AskHR@123";
+        }
 
         if (HttpMethods.IsGet(HttpContext.Request.Method))
         {
