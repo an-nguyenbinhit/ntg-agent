@@ -2,12 +2,12 @@
 type: task
 task: "TASK-0701"
 story: "S-0701"
-status: todo
+status: done
 owner:
 tags: [scrum, task, multi-provider]
 related: ["[[units-governance-ops#UoB-07: Multi-Provider / Model Configuration]]", "[[ADR-001-agent-runtime]]"]
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # TASK-0701: LLM Abstraction Layer (Capability-Based Routing)
@@ -40,4 +40,4 @@ Một abstraction cho phép đổi provider/model per capability (`AnswerGenerat
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Implemented `ModelCapability`, `ModelRouteDto`, `IModelRouter`, `ModelRouter`, `IModelGateway`, and provider-backed `IChatClientFactory` using Microsoft.Extensions.AI. Default route can come from `ModelRouting` config or the published agent provider config.

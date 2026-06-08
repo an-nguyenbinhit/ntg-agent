@@ -2,12 +2,12 @@
 type: task
 task: "TASK-0601"
 story: "S-0601"
-status: todo
+status: partial
 owner:
 tags: [scrum, task, governance]
 related: ["[[units-governance-ops#UoB-06: Feedback, Audit & Analytics]]", "[[units-retrieval-answer#UoB-01: Answer Policy Question]]"]
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # TASK-0601: Audit / Feedback Event Schema
@@ -39,4 +39,4 @@ updated: 2026-06-07
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Added `AuditEventDto`, `AuditTextProtector` (email/phone/GUID masking + SHA-256 hash), and logging sink wired from `PolicyAnswerService`. Remaining hardening: durable storage, retention config, feedback/handoff event reuse.

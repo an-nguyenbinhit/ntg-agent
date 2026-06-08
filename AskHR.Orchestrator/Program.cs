@@ -6,11 +6,15 @@ using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Models.AnonymousSessions;
 using AskHR.Orchestrator.Models.Configuration;
 using AskHR.Orchestrator.Services.Agents;
+using AskHR.Orchestrator.Services.Answers;
 using AskHR.Orchestrator.Services.AnonymousSessions;
+using AskHR.Orchestrator.Services.Audit;
 using AskHR.Orchestrator.Services.DocumentAnalysis;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.Memory;
+using AskHR.Orchestrator.Services.ModelRouting;
 using AskHR.Orchestrator.Services.Security;
+using AskHR.Orchestrator.Services.Slack;
 using AskHR.Orchestrator.Services.TokenTracking;
 using AskHR.ServiceDefaults;
 using OpenTelemetry;
@@ -76,8 +80,12 @@ builder.Services.AddDbContext<AgentDbContext>(options =>
 
 builder.Services.Configure<LongTermMemorySettings>(builder.Configuration.GetSection("LongTermMemory"));
 builder.Services.Configure<DocumentIntelligenceSettings>(builder.Configuration.GetSection("Azure:DocumentIntelligence"));
+builder.Services.Configure<ModelRoutingOptions>(builder.Configuration.GetSection("ModelRouting"));
+builder.Services.Configure<AnswerPipelineOptions>(builder.Configuration.GetSection("AnswerPipeline"));
+builder.Services.Configure<SlackOptions>(builder.Configuration.GetSection("Slack"));
 
 builder.Services.AddControllers();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo("../key/"))
@@ -89,14 +97,32 @@ builder.Services.Configure<AnonymousUserSettings>(
 builder.Services.AddScoped<IAgentFactory,AgentFactory>();
 builder.Services.AddScoped<AgentService>();
 builder.Services.AddScoped<IKnowledgeService, KernelMemoryKnowledge>();
+builder.Services.AddScoped<IModelRouter, ModelRouter>();
+builder.Services.AddScoped<IChatClientFactory, ProviderChatClientFactory>();
+builder.Services.AddScoped<IModelGateway, ModelGateway>();
+builder.Services.AddScoped<IPolicyAnswerService, PolicyAnswerService>();
+builder.Services.AddScoped<IAuditTextProtector, AuditTextProtector>();
+builder.Services.AddScoped<IAuditEventSink, LoggingAuditEventSink>();
 builder.Services.AddScoped<IIdentityResolver, HttpContextIdentityResolver>();
 builder.Services.AddScoped<IRbacService, RbacService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ISlackRequestVerifier, SlackRequestVerifier>();
+builder.Services.AddSingleton<ISlackEventDeduplicator, MemorySlackEventDeduplicator>();
+builder.Services.AddScoped<ISlackIdentityResolver, SlackIdentityResolver>();
 builder.Services.AddScoped<IUserMemoryService, UserMemoryService>();
 builder.Services.AddScoped<IDocumentAnalysisService, DocumentAnalysisService>();
 builder.Services.AddScoped<ITokenTrackingService, TokenTrackingService>();
 builder.Services.AddScoped<IAnonymousSessionService, AnonymousSessionService>();
 builder.Services.AddScoped<IIpAddressService, IpAddressService>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient<ISlackResponseClient, SlackResponseClient>(client =>
+{
+    client.BaseAddress = new Uri("https://slack.com/api/");
+});
+builder.Services.AddHttpClient<ISlackIdentityResolver, SlackIdentityResolver>(client =>
+{
+    client.BaseAddress = new Uri("https://slack.com/api/");
+});
 
 builder.Services.AddScoped<IKernelMemory>(serviceProvider =>
 {

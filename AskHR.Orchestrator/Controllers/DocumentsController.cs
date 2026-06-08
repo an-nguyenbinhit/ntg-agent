@@ -117,6 +117,8 @@ public class DocumentsController : ControllerBase
             return BadRequest("No files uploaded.");
         }
 
+        var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
+
         var unsupportedFiles = files
             .Where(file => file.Length > 0 && !FileTypeService.IsSupportedKnowledgeFile(file.FileName))
             .Select(file => file.FileName)
@@ -125,8 +127,6 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest($"Unsupported knowledge file type: {string.Join(", ", unsupportedFiles)}. {FileTypeService.GetSupportedKnowledgeFormatsDescription()}.");
         }
-
-        var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
 
         tags ??= [];
         var permissions = BuildPermissions(tags, new DocumentPermissionMetadata

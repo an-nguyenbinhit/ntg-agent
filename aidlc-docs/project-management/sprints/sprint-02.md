@@ -1,14 +1,14 @@
 ---
 type: sprint
 sprint: "02"
-status: planning
+status: construction
 owner: Scrum Master
 tags: [scrum, sprint]
 related: ["[[product-backlog]]", "[[Home]]"]
 start: 2026-06-23
 end: 2026-07-04
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # Sprint 02 — Core Trả Lời & Slack Gateway
@@ -60,5 +60,13 @@ _(trống)_
 - [ ] Không vi phạm ràng buộc RBAC/citation/deny-by-default của [[units-retrieval-answer#UoB-01: Answer Policy Question]] §8.7.
 
 ## Sprint Review / Retro
+
+## Implementation Notes
+
+- 2026-06-08: Implemented model routing, answer pipeline, fallback, audit logging, Slack Events adapter, and tests.
+- Code-complete: S-0701, S-0101, S-0102.
+- Application code added but rollout hardening remains: S-0303, S-0601, S-0301.
+- Remaining Slack hardening: bot token config, Slack user identity mapping, thread read permissions, and integration verification.
+- 2026-06-08: Reviewed all uncommitted Sprint 02 code (model routing, answer pipeline, audit, Slack adapter); fixed CA1822/CA1859/CA1869/CA1304/CA1311/CA1862 analyzer findings surfaced by Release build. Implemented `SlackIdentityResolver` to close the identity-mapping gap — Slack `chat.postMessage`/`api/answers` now resolve `AuthorizationContext` per user via email lookup instead of always running anonymous. Remaining Slack hardening: bot token/signing secret config and thread read permissions for production rollout.
 
 _(điền cuối sprint)_

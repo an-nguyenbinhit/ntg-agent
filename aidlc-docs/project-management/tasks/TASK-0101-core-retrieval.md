@@ -2,12 +2,12 @@
 type: task
 task: "TASK-0101"
 story: "S-0101"
-status: todo
+status: done
 owner:
 tags: [scrum, task, rag]
 related: ["[[units-retrieval-answer#UoB-01: Answer Policy Question]]", "[[units-security-identity#UoB-04: RBAC / Identity & Access]]"]
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # TASK-0101: Core Retrieval + Citation API Contract
@@ -41,4 +41,4 @@ Chốt endpoint nội bộ + I/O contract cho Standard RAG: nhận `AskHrRequest
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Added shared `AskHrRequest`/answer/citation DTOs, `PolicyAnswerService`, and `api/answers` endpoint. Pipeline searches through `IKnowledgeService`, requires citations above threshold, calls `AnswerGeneration` through `IModelGateway`, and returns fallback when grounding is missing.

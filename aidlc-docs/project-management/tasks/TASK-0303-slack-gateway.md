@@ -2,12 +2,12 @@
 type: task
 task: "TASK-0303"
 story: "S-0303"
-status: todo
+status: partial
 owner:
 tags: [scrum, task, slack]
 related: ["[[units-channels#UoB-03: Slack Mention & Thread Context]]", "[[units-security-identity#UoB-04: RBAC / Identity & Access]]"]
 created: 2026-06-07
-updated: 2026-06-07
+updated: 2026-06-08
 ---
 
 # TASK-0303: Slack Webhook → AskHrRequest Normalization
@@ -41,4 +41,5 @@ Chuẩn hóa mọi event Slack (`@mention`, DM, thread reply) thành một `AskH
 
 ## Notes / Decisions
 
--
+- 2026-06-08: Added `api/slack/events`, Slack Events DTOs, signature verification, event dedup, mention normalization, default-agent routing, and `SlackResponseClient` for `chat.postMessage`. Remaining rollout hardening: Slack user identity mapping and thread read permissions.
+- 2026-06-08: Added `SlackIdentityResolver` — maps `slack_user_id` to internal `User` via `users.info` email lookup (cached) and resolves `AuthorizationContext` through `IRbacService`, falling back to `anonymous` when the lookup fails or no internal user matches. Wired into `SlackController` so answers respect RBAC instead of always running anonymous. Remaining rollout hardening: thread read permissions and bot token/signing secret config for production workspaces.
