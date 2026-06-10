@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Models.Agents;
+using AskHR.Common.Dtos.Agents;
 using AskHR.Orchestrator.Extentions;
 
 namespace AskHR.Orchestrator.Controllers;
@@ -23,7 +24,8 @@ public class SkillsController : ControllerBase
     public async Task<IActionResult> GetSkills(CancellationToken ct)
     {
         var skills = await _context.Skills.ToListAsync(ct);
-        return Ok(skills);
+        var dtos = skills.Select(MapToDto).ToList();
+        return Ok(dtos);
     }
 
     [HttpGet("{id}")]
@@ -31,14 +33,16 @@ public class SkillsController : ControllerBase
     {
         var skill = await _context.Skills.FindAsync(new object[] { id }, ct);
         if (skill == null) return NotFound();
-        return Ok(skill);
+        return Ok(MapToDto(skill));
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateSkill([FromBody] Skill skill, CancellationToken ct)
+    public async Task<IActionResult> CreateSkill([FromBody] SkillDto dto, CancellationToken ct)
     {
         var userId = User.GetUserId() ?? throw new UnauthorizedAccessException();
         
+        var skill = new Skill();
+        MapToEntity(dto, skill);
         skill.Id = Guid.NewGuid();
         skill.CreatedAt = DateTime.UtcNow;
         skill.UpdatedAt = DateTime.UtcNow;
@@ -47,11 +51,12 @@ public class SkillsController : ControllerBase
         _context.Skills.Add(skill);
         await _context.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(GetSkill), new { id = skill.Id }, skill);
+        dto.Id = skill.Id;
+        return CreatedAtAction(nameof(GetSkill), new { id = skill.Id }, dto);
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateSkill(Guid id, [FromBody] Skill updatedSkill, CancellationToken ct)
+    public async Task<IActionResult> UpdateSkill(Guid id, [FromBody] SkillDto updatedSkill, CancellationToken ct)
     {
         if (id != updatedSkill.Id) return BadRequest();
 
@@ -60,19 +65,7 @@ public class SkillsController : ControllerBase
         var skill = await _context.Skills.FindAsync(new object[] { id }, ct);
         if (skill == null) return NotFound();
 
-        skill.SkillId = updatedSkill.SkillId;
-        skill.Name = updatedSkill.Name;
-        skill.Description = updatedSkill.Description;
-        skill.Enabled = updatedSkill.Enabled;
-        skill.Owner = updatedSkill.Owner;
-        skill.ApprovalStatus = updatedSkill.ApprovalStatus;
-        skill.Version = updatedSkill.Version;
-        skill.Scope = updatedSkill.Scope;
-        skill.Instructions = updatedSkill.Instructions;
-        skill.AnswerPolicy = updatedSkill.AnswerPolicy;
-        skill.Tools = updatedSkill.Tools;
-        skill.Attachments = updatedSkill.Attachments;
-        skill.Escalation = updatedSkill.Escalation;
+        MapToEntity(updatedSkill, skill);
 
         skill.UpdatedAt = DateTime.UtcNow;
         skill.UpdatedByUserId = userId;
@@ -92,5 +85,72 @@ public class SkillsController : ControllerBase
         await _context.SaveChangesAsync(ct);
 
         return NoContent();
+    }
+
+    private static SkillDto MapToDto(Skill skill)
+    {
+        return new SkillDto
+        {
+            Id = skill.Id,
+            SkillId = skill.SkillId,
+            Name = skill.Name,
+            Description = skill.Description,
+            Enabled = skill.Enabled,
+            Owner = skill.Owner,
+            ApprovalStatus = skill.ApprovalStatus,
+            Version = skill.Version,
+            Instructions = skill.Instructions,
+            Scope = new SkillScopeDto
+            {
+                Topics = skill.Scope.Topics,
+                Tags = skill.Scope.Tags,
+                BusinessUnits = skill.Scope.BusinessUnits
+            },
+            AnswerPolicy = new SkillAnswerPolicyDto
+            {
+                RequireCitation = skill.AnswerPolicy.RequireCitation,
+                RefuseIfExpired = skill.AnswerPolicy.RefuseIfExpired,
+                ClarifyingQuestions = skill.AnswerPolicy.ClarifyingQuestions
+            },
+            Tools = skill.Tools,
+            Attachments = skill.Attachments,
+            Escalation = new SkillEscalationDto
+            {
+                FallbackContact = skill.Escalation.FallbackContact,
+                SeverityHint = skill.Escalation.SeverityHint
+            },
+            PrimaryProvider = skill.PrimaryProvider,
+            PrimaryModel = skill.PrimaryModel,
+            CreatedAt = skill.CreatedAt,
+            UpdatedAt = skill.UpdatedAt
+        };
+    }
+
+    private static void MapToEntity(SkillDto dto, Skill skill)
+    {
+        skill.SkillId = dto.SkillId;
+        skill.Name = dto.Name;
+        skill.Description = dto.Description;
+        skill.Enabled = dto.Enabled;
+        skill.Owner = dto.Owner;
+        skill.ApprovalStatus = dto.ApprovalStatus;
+        skill.Version = dto.Version;
+        skill.Instructions = dto.Instructions;
+        skill.PrimaryProvider = dto.PrimaryProvider;
+        skill.PrimaryModel = dto.PrimaryModel;
+        
+        skill.Scope.Topics = dto.Scope.Topics;
+        skill.Scope.Tags = dto.Scope.Tags;
+        skill.Scope.BusinessUnits = dto.Scope.BusinessUnits;
+
+        skill.AnswerPolicy.RequireCitation = dto.AnswerPolicy.RequireCitation;
+        skill.AnswerPolicy.RefuseIfExpired = dto.AnswerPolicy.RefuseIfExpired;
+        skill.AnswerPolicy.ClarifyingQuestions = dto.AnswerPolicy.ClarifyingQuestions;
+
+        skill.Tools = dto.Tools;
+        skill.Attachments = dto.Attachments;
+
+        skill.Escalation.FallbackContact = dto.Escalation.FallbackContact;
+        skill.Escalation.SeverityHint = dto.Escalation.SeverityHint;
     }
 }

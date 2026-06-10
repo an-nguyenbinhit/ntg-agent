@@ -1,0 +1,215 @@
+@page "/skills"
+@using AskHR.Common.Dtos.Agents
+@using AskHR.Admin.Client.Services
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject NavigationManager Navigation
+@inject SkillClient SkillClient
+
+<PageTitle>Skill Management</PageTitle>
+
+<div class="container-fluid px-2 px-md-4 py-2 py-md-3">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="bi bi-tools me-2"></i>Skill Management
+            </h2>
+            <button class="btn btn-primary" @onclick="CreateNewSkill">
+                <i class="bi bi-plus-circle me-2"></i>New Skill
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (skills != null)
+    {
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Skill ID</th>
+                                <th>Name</th>
+                                <th>Owner</th>
+                                <th>Provider/Model</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var skill in skills)
+                            {
+                                <tr>
+                                    <td><code>@skill.SkillId</code></td>
+                                    <td>@skill.Name</td>
+                                    <td>@skill.Owner</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(skill.PrimaryProvider))
+                                        {
+                                            <span class="badge bg-info">@skill.PrimaryProvider / @skill.PrimaryModel</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Default</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @(skill.Enabled ? "bg-success" : "bg-danger")">
+                                            @(skill.Enabled ? "Enabled" : "Disabled")
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => EditSkill(skill)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteSkill(skill.Id)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showEditor && currentSkill != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(isEditing ? "Edit Skill" : "New Skill")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditor"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Skill ID</label>
+                            <input type="text" class="form-control" @bind="currentSkill.SkillId" placeholder="e.g. leave-policy" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="form-control" @bind="currentSkill.Name" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" @bind="currentSkill.Description" rows="2"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Instructions (Progressive Disclosure)</label>
+                            <textarea class="form-control" @bind="currentSkill.Instructions" rows="4"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Provider</label>
+                            <input type="text" class="form-control" @bind="currentSkill.PrimaryProvider" placeholder="e.g. AzureOpenAI" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Model</label>
+                            <input type="text" class="form-control" @bind="currentSkill.PrimaryModel" placeholder="e.g. gpt-4o" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Owner</label>
+                            <input type="text" class="form-control" @bind="currentSkill.Owner" />
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" @bind="currentSkill.Enabled" id="skillEnabled" />
+                                <label class="form-check-label" for="skillEnabled">Enabled</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEditor">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveSkill">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private List<SkillDto>? skills;
+    private bool showEditor = false;
+    private bool isEditing = false;
+    private SkillDto? currentSkill;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSkills();
+    }
+
+    private async Task LoadSkills()
+    {
+        isLoading = true;
+        skills = await SkillClient.GetSkillsAsync();
+        isLoading = false;
+    }
+
+    private void CreateNewSkill()
+    {
+        currentSkill = new SkillDto();
+        isEditing = false;
+        showEditor = true;
+    }
+
+    private void EditSkill(SkillDto skill)
+    {
+        currentSkill = new SkillDto
+        {
+            Id = skill.Id,
+            SkillId = skill.SkillId,
+            Name = skill.Name,
+            Description = skill.Description,
+            Instructions = skill.Instructions,
+            PrimaryProvider = skill.PrimaryProvider,
+            PrimaryModel = skill.PrimaryModel,
+            Owner = skill.Owner,
+            Enabled = skill.Enabled,
+            Scope = skill.Scope ?? new(),
+            AnswerPolicy = skill.AnswerPolicy ?? new(),
+            Escalation = skill.Escalation ?? new()
+        };
+        isEditing = true;
+        showEditor = true;
+    }
+
+    private async Task SaveSkill()
+    {
+        if (currentSkill == null) return;
+
+        if (isEditing)
+        {
+            await SkillClient.UpdateSkillAsync(currentSkill.Id, currentSkill);
+        }
+        else
+        {
+            await SkillClient.CreateSkillAsync(currentSkill);
+        }
+
+        showEditor = false;
+        await LoadSkills();
+    }
+
+    private async Task DeleteSkill(Guid id)
+    {
+        await SkillClient.DeleteSkillAsync(id);
+        await LoadSkills();
+    }
+
+    private void CloseEditor()
+    {
+        showEditor = false;
+    }
+}
