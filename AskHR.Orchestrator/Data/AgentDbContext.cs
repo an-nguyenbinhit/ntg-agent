@@ -10,6 +10,7 @@ using AskHR.Orchestrator.Models.Identity;
 using AskHR.Orchestrator.Models.Tags;
 using AskHR.Orchestrator.Models.TokenUsage;
 using AskHR.Orchestrator.Models.UserPreferences;
+using AskHR.Orchestrator.Models.Providers;
 namespace AskHR.Orchestrator.Data;
 
 public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContext(options)
@@ -24,6 +25,11 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
     public DbSet<Models.Agents.Agent> Agents { get; set; } = null!;
 
     public DbSet<Models.Agents.AgentTools> AgentTools { get; set; } = null!;
+
+    public DbSet<Models.Agents.Skill> Skills { get; set; } = null!;
+
+    public DbSet<ProviderMetadata> ProviderMetadatas { get; set; } = null!;
+    public DbSet<ModelRoute> ModelRoutes { get; set; } = null!;
 
     public DbSet<Models.Documents.Document> Documents { get; set; } = null!;
 
@@ -63,6 +69,50 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             (a, b) => (a ?? new List<string>()).SequenceEqual(b ?? new List<string>()),
             list => list.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
             list => list.ToList()
+        );
+
+        var fallbackRouteListToJson = new ValueConverter<List<FallbackRoute>, string>(
+            list => JsonSerializer.Serialize(list, JsonSerializerOptions.Default),
+            json => JsonSerializer.Deserialize<List<FallbackRoute>>(json, JsonSerializerOptions.Default) ?? new List<FallbackRoute>()
+        );
+
+        var fallbackRouteListComparer = new ValueComparer<List<FallbackRoute>>(
+            (a, b) => JsonSerializer.Serialize(a, JsonSerializerOptions.Default) == JsonSerializer.Serialize(b, JsonSerializerOptions.Default),
+            list => JsonSerializer.Serialize(list, JsonSerializerOptions.Default).GetHashCode(),
+            list => JsonSerializer.Deserialize<List<FallbackRoute>>(JsonSerializer.Serialize(list, JsonSerializerOptions.Default), JsonSerializerOptions.Default)!
+        );
+
+        var skillScopeToJson = new ValueConverter<Models.Agents.SkillScope, string>(
+            s => JsonSerializer.Serialize(s, JsonSerializerOptions.Default),
+            json => JsonSerializer.Deserialize<Models.Agents.SkillScope>(json, JsonSerializerOptions.Default) ?? new Models.Agents.SkillScope()
+        );
+
+        var skillScopeComparer = new ValueComparer<Models.Agents.SkillScope>(
+            (a, b) => JsonSerializer.Serialize(a, JsonSerializerOptions.Default) == JsonSerializer.Serialize(b, JsonSerializerOptions.Default),
+            s => JsonSerializer.Serialize(s, JsonSerializerOptions.Default).GetHashCode(),
+            s => JsonSerializer.Deserialize<Models.Agents.SkillScope>(JsonSerializer.Serialize(s, JsonSerializerOptions.Default), JsonSerializerOptions.Default)!
+        );
+
+        var skillAnswerPolicyToJson = new ValueConverter<Models.Agents.SkillAnswerPolicy, string>(
+            p => JsonSerializer.Serialize(p, JsonSerializerOptions.Default),
+            json => JsonSerializer.Deserialize<Models.Agents.SkillAnswerPolicy>(json, JsonSerializerOptions.Default) ?? new Models.Agents.SkillAnswerPolicy()
+        );
+
+        var skillAnswerPolicyComparer = new ValueComparer<Models.Agents.SkillAnswerPolicy>(
+            (a, b) => JsonSerializer.Serialize(a, JsonSerializerOptions.Default) == JsonSerializer.Serialize(b, JsonSerializerOptions.Default),
+            p => JsonSerializer.Serialize(p, JsonSerializerOptions.Default).GetHashCode(),
+            p => JsonSerializer.Deserialize<Models.Agents.SkillAnswerPolicy>(JsonSerializer.Serialize(p, JsonSerializerOptions.Default), JsonSerializerOptions.Default)!
+        );
+
+        var skillEscalationToJson = new ValueConverter<Models.Agents.SkillEscalation, string>(
+            e => JsonSerializer.Serialize(e, JsonSerializerOptions.Default),
+            json => JsonSerializer.Deserialize<Models.Agents.SkillEscalation>(json, JsonSerializerOptions.Default) ?? new Models.Agents.SkillEscalation()
+        );
+
+        var skillEscalationComparer = new ValueComparer<Models.Agents.SkillEscalation>(
+            (a, b) => JsonSerializer.Serialize(a, JsonSerializerOptions.Default) == JsonSerializer.Serialize(b, JsonSerializerOptions.Default),
+            e => JsonSerializer.Serialize(e, JsonSerializerOptions.Default).GetHashCode(),
+            e => JsonSerializer.Deserialize<Models.Agents.SkillEscalation>(JsonSerializer.Serialize(e, JsonSerializerOptions.Default), JsonSerializerOptions.Default)!
         );
 
         modelBuilder.Entity<User>(b =>
@@ -225,6 +275,75 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             e.Property(x => x.IngestStatus)
                 .HasConversion<string>()
                 .HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<Models.Agents.Agent>(e =>
+        {
+            e.Property(x => x.AllowedEmojis)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+        });
+
+        modelBuilder.Entity<ProviderMetadata>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Capabilities)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+                
+            e.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ModelRoute>(e =>
+        {
+            e.HasKey(x => x.Id);
+            
+            e.Property(x => x.Fallbacks)
+                .HasConversion(fallbackRouteListToJson)
+                .Metadata.SetValueComparer(fallbackRouteListComparer);
+                
+            e.Property(x => x.RequiredCapabilities)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+                
+            e.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Models.Agents.Skill>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.SkillId).IsUnique();
+            
+            e.Property(x => x.Scope)
+                .HasConversion(skillScopeToJson)
+                .Metadata.SetValueComparer(skillScopeComparer);
+
+            e.Property(x => x.AnswerPolicy)
+                .HasConversion(skillAnswerPolicyToJson)
+                .Metadata.SetValueComparer(skillAnswerPolicyComparer);
+
+            e.Property(x => x.Tools)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.Attachments)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.Escalation)
+                .HasConversion(skillEscalationToJson)
+                .Metadata.SetValueComparer(skillEscalationComparer);
+                
+            e.HasOne(x => x.UpdatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // UserPreference configuration

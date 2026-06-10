@@ -9,6 +9,7 @@ using AskHR.Orchestrator.Models.Documents;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Common.Logger;
 using AskHR.ServiceDefaults.Logging.Metrics;
+using System.Security.Cryptography;
 using AskHR.Common.Dtos.Documents;
 
 namespace AskHR.Orchestrator.Controllers;
@@ -120,7 +121,8 @@ public class DocumentsController : ControllerBase
         [FromQuery] List<string> tags,
         [FromQuery] List<string>? roles = null,
         [FromQuery] List<string>? businessUnits = null,
-        [FromQuery] string? sensitivityLevel = null)
+        [FromQuery] string? sensitivityLevel = null,
+        CancellationToken ct = default)
     {
         if (files == null || files.Count == 0)
         {
@@ -152,33 +154,75 @@ public class DocumentsController : ControllerBase
         {
             if (file.Length > 0)
             {
-                var knowledgeDocId = await _knowledgeService.ImportDocumentAsync(file.OpenReadStream(), file.FileName, agentId, permissions);
-                var document = new Document
+                using var stream = file.OpenReadStream();
+                using var sha256 = SHA256.Create();
+                var hashBytes = await sha256.ComputeHashAsync(stream, ct);
+                var hash = Convert.ToHexString(hashBytes);
+                stream.Position = 0; // Reset stream position before importing
+
+                var existingDocument = await _agentDbContext.Documents
+                    .Include(d => d.DocumentTags)
+                    .FirstOrDefaultAsync(d => d.Name == file.FileName && d.FolderId == folderId && d.AgentId == agentId, ct);
+
+                if (existingDocument != null)
                 {
-                    Id = Guid.NewGuid(),
-                    Name = file.FileName,
-                    AgentId = agentId,
-                    KnowledgeDocId = knowledgeDocId,
-                    FolderId = folderId,
-                    CreatedByUserId = userId,
-                    UpdatedByUserId = userId,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                    Type = DocumentType.File,
-                    Roles = permissions.Roles,
-                    BusinessUnits = permissions.BusinessUnits,
-                    SensitivityLevel = permissions.SensitivityLevel,
-                    IngestStatus = IngestStatus.Success
-                };
-                documents.Add(document);
-                foreach (var tag in tags)
-                {
-                    var documentTag = new DocumentTag
+                    if (existingDocument.Hash != hash)
                     {
-                        DocumentId = document.Id,
-                        TagId = new Guid(tag)
+                        // Re-index because file changed
+                        existingDocument.Hash = hash;
+                        existingDocument.UpdatedByUserId = userId;
+                        existingDocument.UpdatedAt = DateTime.UtcNow;
+                        existingDocument.Roles = permissions.Roles;
+                        existingDocument.BusinessUnits = permissions.BusinessUnits;
+                        existingDocument.SensitivityLevel = permissions.SensitivityLevel;
+
+                        await ReindexExistingDocumentWithStreamAsync(existingDocument, stream, permissions, ct);
+
+                        // Update Tags
+                        _agentDbContext.DocumentTags.RemoveRange(existingDocument.DocumentTags);
+                        foreach (var tag in tags)
+                        {
+                            _agentDbContext.DocumentTags.Add(new DocumentTag
+                            {
+                                DocumentId = existingDocument.Id,
+                                TagId = new Guid(tag)
+                            });
+                        }
+                    }
+                    // If hash is same, we don't re-index. We might still update metadata if requested, 
+                    // but usually upload is for content change. For metadata change, use UpdateDocumentMetadata.
+                }
+                else
+                {
+                    var knowledgeDocId = await _knowledgeService.ImportDocumentAsync(stream, file.FileName, agentId, permissions, ct);
+                    var document = new Document
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = file.FileName,
+                        AgentId = agentId,
+                        KnowledgeDocId = knowledgeDocId,
+                        FolderId = folderId,
+                        CreatedByUserId = userId,
+                        UpdatedByUserId = userId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        Type = DocumentType.File,
+                        Roles = permissions.Roles,
+                        BusinessUnits = permissions.BusinessUnits,
+                        SensitivityLevel = permissions.SensitivityLevel,
+                        IngestStatus = IngestStatus.Success,
+                        Hash = hash
                     };
-                    documentTags.Add(documentTag);
+                    documents.Add(document);
+                    foreach (var tag in tags)
+                    {
+                        var documentTag = new DocumentTag
+                        {
+                            DocumentId = document.Id,
+                            TagId = new Guid(tag)
+                        };
+                        documentTags.Add(documentTag);
+                    }
                 }
             }
         }
@@ -207,7 +251,7 @@ public class DocumentsController : ControllerBase
     /// deleted.</description></item> </list></returns>
     [HttpDelete("{id}/{agentId}")]
     [Authorize]
-    public async Task<IActionResult> DeleteDocument(Guid id, Guid agentId)
+    public async Task<IActionResult> DeleteDocument(Guid id, Guid agentId, CancellationToken ct = default)
     {
         if (User.GetUserId() == null)
         {
@@ -223,11 +267,11 @@ public class DocumentsController : ControllerBase
 
         if (document.KnowledgeDocId != null)
         {
-            await _knowledgeService.RemoveDocumentAsync(document.KnowledgeDocId, agentId);
+            await _knowledgeService.RemoveDocumentAsync(document.KnowledgeDocId, agentId, ct);
         }
 
         _agentDbContext.Documents.Remove(document);
-        await _agentDbContext.SaveChangesAsync();
+        await _agentDbContext.SaveChangesAsync(ct);
 
         return NoContent();
     }
@@ -614,6 +658,31 @@ public class DocumentsController : ControllerBase
             document.IngestStatus = IngestStatus.Failed;
             document.IngestErrorMessage = ex.Message;
             _logger.LogError(ex, "Failed to re-index document {DocumentId} for agent {AgentId}", document.Id, document.AgentId);
+        }
+    }
+
+    private async Task ReindexExistingDocumentWithStreamAsync(Document document, Stream newStream, DocumentPermissionMetadata permissions, CancellationToken ct)
+    {
+        var previousKnowledgeDocId = document.KnowledgeDocId;
+        try
+        {
+            var fileName = FileTypeService.SanitizeFileName(document.Name);
+            var newKnowledgeDocId = await _knowledgeService.ImportDocumentAsync(newStream, fileName, document.AgentId, permissions, ct);
+
+            document.KnowledgeDocId = newKnowledgeDocId;
+            document.IngestStatus = IngestStatus.Success;
+            document.IngestErrorMessage = null;
+
+            if (!string.IsNullOrWhiteSpace(previousKnowledgeDocId) && previousKnowledgeDocId != newKnowledgeDocId)
+            {
+                await _knowledgeService.RemoveDocumentAsync(previousKnowledgeDocId, document.AgentId, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            document.IngestStatus = IngestStatus.Failed;
+            document.IngestErrorMessage = ex.Message;
+            _logger.LogError(ex, "Failed to re-index document {DocumentId} with new stream for agent {AgentId}", document.Id, document.AgentId);
         }
     }
 }

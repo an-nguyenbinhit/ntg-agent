@@ -19,13 +19,23 @@ public class Agent
 
     public string Instructions { get; set; } = string.Empty;
 
+    [Obsolete("Use ProviderMetadata and ModelRoute instead (UoB-07)")]
     public string ProviderName { get; set; } = string.Empty;
 
+    [Obsolete("Use ProviderMetadata and ModelRoute instead (UoB-07)")]
     public string ProviderModelName { get; set; } = string.Empty;
 
+    [Obsolete("Use ProviderMetadata and ModelRoute instead (UoB-07)")]
     public string ProviderEndpoint { get; set; } = string.Empty;
 
+    [Obsolete("Use ProviderMetadata and ModelRoute instead (UoB-07)")]
     public string ProviderApiKey { get; set; } = string.Empty;
+
+    // Persona Configurations (UoB-05)
+    public string Tone { get; set; } = string.Empty;
+    public float CreativityCap { get; set; } = 0.5f;
+    public List<string> AllowedEmojis { get; set; } = new();
+    public string ChannelProfile { get; set; } = string.Empty;
 
     public bool IsPublished { get; set; }
 

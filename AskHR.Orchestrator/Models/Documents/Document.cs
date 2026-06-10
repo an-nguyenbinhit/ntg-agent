@@ -12,6 +12,7 @@ public class Document
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
+    public string? Hash { get; set; }
     public string? KnowledgeDocId { get; set; }
     public Guid? FolderId { get; set; }
     public Guid AgentId { get; set; }

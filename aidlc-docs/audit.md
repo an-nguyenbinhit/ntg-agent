@@ -427,3 +427,11 @@ váº­y commit Ä‘i
 **User Input**: "review code change"
 **AI Response**: "Reviewed user-implemented S-0501 Admin Portal endpoints. Verified the addition of IngestStatus enum, Document metadata properties (Roles, BusinessUnits, SensitivityLevel) to EF Core, and new endpoints (UpdateDocumentMetadata, ReindexDocument) in DocumentsController. All 278 Unit tests passed. Updated sprint-04.md and created walkthrough."
 **Context**: Construction phase - Sprint 04 S-0501 REST Endpoints code review and verification.
+
+---
+
+## Construction: Sprint 04 S-0502 Persona and Provider Config
+**Timestamp**: 2026-06-08T23:34:14+07:00
+**User Input**: "lên plan ti?p t?c làm task"
+**AI Response**: "Implemented S-0502. Expanded Agent model with Persona properties (Tone, CreativityCap, AllowedEmojis, ChannelProfile). Created ProviderMetadata and ModelRoute entities and configured EF Core. Created ProvidersAdminController with CRUD endpoints. Build successful."
+**Context**: Construction phase - Sprint 04 S-0502 execution.

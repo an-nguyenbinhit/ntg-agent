@@ -77,7 +77,11 @@ public class AgentAdminController : ControllerBase
                 ToolCount = $"{x.AgentTools.Count(a => a.IsEnabled)}/{x.AgentTools.Count}",
                 IsDefault = x.IsDefault,
                 IsPublished = x.IsPublished,
-                Mode = x.Mode
+                Mode = x.Mode,
+                Tone = x.Tone,
+                CreativityCap = x.CreativityCap,
+                AllowedEmojis = x.AllowedEmojis,
+                ChannelProfile = x.ChannelProfile
             })
             .FirstOrDefaultAsync();
 
@@ -129,6 +133,13 @@ public class AgentAdminController : ControllerBase
         agent.ProviderEndpoint = updatedAgent.ProviderEndpoint ?? string.Empty;
         agent.ProviderApiKey = updatedAgent.ProviderApiKey ?? string.Empty;
         agent.ProviderModelName = updatedAgent.ProviderModelName ?? string.Empty;
+        
+        // Persona Configurations
+        agent.Tone = updatedAgent.Tone ?? string.Empty;
+        agent.CreativityCap = updatedAgent.CreativityCap;
+        agent.AllowedEmojis = updatedAgent.AllowedEmojis ?? new List<string>();
+        agent.ChannelProfile = updatedAgent.ChannelProfile ?? string.Empty;
+
         agent.McpServer = updatedAgent.McpServer;
         agent.Mode = updatedAgent.Mode;
         agent.UpdatedAt = DateTime.UtcNow;
@@ -346,6 +357,13 @@ public class AgentAdminController : ControllerBase
             ProviderApiKey = updatedAgent.ProviderApiKey ?? string.Empty,
             ProviderModelName = updatedAgent.ProviderModelName ?? string.Empty,
             Mode = updatedAgent.Mode,
+            
+            // Persona Configurations
+            Tone = updatedAgent.Tone ?? string.Empty,
+            CreativityCap = updatedAgent.CreativityCap,
+            AllowedEmojis = updatedAgent.AllowedEmojis ?? new List<string>(),
+            ChannelProfile = updatedAgent.ChannelProfile ?? string.Empty,
+
             UpdatedByUserId = userId,
             OwnerUserId = userId,
             IsDefault = false,
