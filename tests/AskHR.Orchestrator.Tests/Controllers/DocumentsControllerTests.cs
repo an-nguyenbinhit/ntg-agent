@@ -20,6 +20,7 @@ public class DocumentsControllerTests
     private Mock<IKnowledgeService> _mockKnowledgeService;
     private Mock<ILogger<DocumentsController>> _mockLogger;
     private Mock<IMetricsCollector> _mockMetrics;
+    private IDocumentIngestionService _ingestionService;
     private DocumentsController _controller;
     private Guid _testUserId;
     private Guid _testAgentId;
@@ -43,7 +44,8 @@ public class DocumentsControllerTests
             new Claim(ClaimTypes.NameIdentifier, _testUserId.ToString()),
             new Claim(ClaimTypes.Role, "Admin")
         ], "mock"));
-        _controller = new DocumentsController(_context, _mockKnowledgeService.Object, _mockLogger.Object, _mockMetrics.Object)
+        _ingestionService = new DocumentIngestionService(_context, _mockKnowledgeService.Object, Mock.Of<ILogger<DocumentIngestionService>>());
+        _controller = new DocumentsController(_context, _mockKnowledgeService.Object, _ingestionService, _mockLogger.Object, _mockMetrics.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -60,22 +62,27 @@ public class DocumentsControllerTests
     [Test]
     public void Constructor_WhenAgentDbContextIsNull_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new DocumentsController(null!, _mockKnowledgeService.Object, _mockLogger.Object, _mockMetrics.Object));
+        Assert.Throws<ArgumentNullException>(() => new DocumentsController(null!, _mockKnowledgeService.Object, _ingestionService, _mockLogger.Object, _mockMetrics.Object));
     }
     [Test]
     public void Constructor_WhenKnowledgeServiceIsNull_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, null!, _mockLogger.Object, _mockMetrics.Object));
+        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, null!, _ingestionService, _mockLogger.Object, _mockMetrics.Object));
+    }
+    [Test]
+    public void Constructor_WhenIngestionServiceIsNull_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, _mockKnowledgeService.Object, null!, _mockLogger.Object, _mockMetrics.Object));
     }
     [Test]
     public void Constructor_WhenLoggerIsNull_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, _mockKnowledgeService.Object, null!, _mockMetrics.Object));
+        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, _mockKnowledgeService.Object, _ingestionService, null!, _mockMetrics.Object));
     }
     [Test]
     public void Constructor_WhenMetricsIsNull_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, _mockKnowledgeService.Object, _mockLogger.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => new DocumentsController(_context, _mockKnowledgeService.Object, _ingestionService, _mockLogger.Object, null!));
     }
     [Test]
     public async Task GetDocumentsByAgentId_WhenNoDocuments_ReturnsEmptyList()

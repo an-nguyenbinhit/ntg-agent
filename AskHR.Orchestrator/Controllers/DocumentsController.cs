@@ -9,7 +9,6 @@ using AskHR.Orchestrator.Models.Documents;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Common.Logger;
 using AskHR.ServiceDefaults.Logging.Metrics;
-using System.Security.Cryptography;
 using AskHR.Common.Dtos.Documents;
 
 namespace AskHR.Orchestrator.Controllers;
@@ -21,13 +20,15 @@ public class DocumentsController : ControllerBase
 {
     private readonly AgentDbContext _agentDbContext;
     private readonly IKnowledgeService _knowledgeService;
+    private readonly IDocumentIngestionService _documentIngestionService;
     private readonly ILogger<DocumentsController> _logger;
     private readonly IMetricsCollector _metrics;
 
-    public DocumentsController(AgentDbContext agentDbContext, IKnowledgeService knowledgeService, ILogger<DocumentsController> logger, IMetricsCollector metrics)
+    public DocumentsController(AgentDbContext agentDbContext, IKnowledgeService knowledgeService, IDocumentIngestionService documentIngestionService, ILogger<DocumentsController> logger, IMetricsCollector metrics)
     {
         _agentDbContext = agentDbContext ?? throw new ArgumentNullException(nameof(agentDbContext));
         _knowledgeService = knowledgeService ?? throw new ArgumentNullException(nameof(knowledgeService));
+        _documentIngestionService = documentIngestionService ?? throw new ArgumentNullException(nameof(documentIngestionService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
     }
@@ -155,10 +156,7 @@ public class DocumentsController : ControllerBase
             if (file.Length > 0)
             {
                 using var stream = file.OpenReadStream();
-                using var sha256 = SHA256.Create();
-                var hashBytes = await sha256.ComputeHashAsync(stream, ct);
-                var hash = Convert.ToHexString(hashBytes);
-                stream.Position = 0; // Reset stream position before importing
+                var hash = await _documentIngestionService.ComputeHashAsync(stream, ct);
 
                 var existingDocument = await _agentDbContext.Documents
                     .Include(d => d.DocumentTags)
@@ -176,7 +174,7 @@ public class DocumentsController : ControllerBase
                         existingDocument.BusinessUnits = permissions.BusinessUnits;
                         existingDocument.SensitivityLevel = permissions.SensitivityLevel;
 
-                        await ReindexExistingDocumentWithStreamAsync(existingDocument, stream, permissions, ct);
+                        await _documentIngestionService.ReindexExistingDocumentWithStreamAsync(existingDocument, stream, permissions, ct);
 
                         // Update Tags
                         _agentDbContext.DocumentTags.RemoveRange(existingDocument.DocumentTags);
@@ -303,7 +301,7 @@ public class DocumentsController : ControllerBase
         document.UpdatedByUserId = userId;
         document.UpdatedAt = DateTime.UtcNow;
 
-        await ReindexDocumentAsync(document, ct);
+        await _documentIngestionService.ReindexDocumentAsync(document, ct);
 
         await _agentDbContext.SaveChangesAsync(ct);
 
@@ -340,7 +338,7 @@ public class DocumentsController : ControllerBase
             return NotFound();
         }
 
-        await ReindexDocumentAsync(document, ct);
+        await _documentIngestionService.ReindexDocumentAsync(document, ct);
         await _agentDbContext.SaveChangesAsync(ct);
 
         _logger.LogBusinessEvent("DocumentReindexed", new { AgentId = agentId, DocumentId = id, document.IngestStatus });
@@ -594,96 +592,6 @@ public class DocumentsController : ControllerBase
     private static DocumentPermissionMetadata BuildPermissions(IEnumerable<string>? tags, DocumentPermissionMetadata? permissions)
     {
         return (permissions ?? new DocumentPermissionMetadata()).WithAllowedTags(tags);
-    }
-
-    /// <summary>
-    /// Re-imports a document into the knowledge base using its currently stored permission metadata, replacing
-    /// the previous knowledge base entry. Updates the document's <see cref="Document.IngestStatus"/> and
-    /// <see cref="Document.IngestErrorMessage"/> based on the outcome. Caller is responsible for persisting changes.
-    /// </summary>
-    private async Task ReindexDocumentAsync(Document document, CancellationToken ct)
-    {
-        var tags = await _agentDbContext.DocumentTags
-            .Where(dt => dt.DocumentId == document.Id)
-            .Select(dt => dt.Tag.Name)
-            .ToListAsync(ct);
-
-        var permissions = BuildPermissions(tags, new DocumentPermissionMetadata
-        {
-            Roles = document.Roles,
-            BusinessUnits = document.BusinessUnits,
-            SensitivityLevel = document.SensitivityLevel
-        });
-
-        var previousKnowledgeDocId = document.KnowledgeDocId;
-
-        try
-        {
-            string newKnowledgeDocId;
-            if (document.Type == DocumentType.WebPage)
-            {
-                if (string.IsNullOrWhiteSpace(document.Url))
-                {
-                    throw new InvalidOperationException("Document has no source URL to re-index from.");
-                }
-
-                newKnowledgeDocId = await _knowledgeService.ImportWebPageAsync(document.Url, document.AgentId, permissions, ct);
-            }
-            else
-            {
-                if (string.IsNullOrWhiteSpace(previousKnowledgeDocId))
-                {
-                    throw new InvalidOperationException("Document has no existing knowledge base content to re-index from.");
-                }
-
-                var fileName = FileTypeService.SanitizeFileName(document.Name);
-                var content = await _knowledgeService.ExportDocumentAsync(previousKnowledgeDocId, fileName, document.AgentId, ct)
-                    ?? throw new InvalidOperationException("Unable to retrieve the document's existing content from the knowledge base.");
-
-                await using var stream = await content.GetStreamAsync();
-                newKnowledgeDocId = await _knowledgeService.ImportDocumentAsync(stream, fileName, document.AgentId, permissions, ct);
-            }
-
-            document.KnowledgeDocId = newKnowledgeDocId;
-            document.IngestStatus = IngestStatus.Success;
-            document.IngestErrorMessage = null;
-
-            if (!string.IsNullOrWhiteSpace(previousKnowledgeDocId) && previousKnowledgeDocId != newKnowledgeDocId)
-            {
-                await _knowledgeService.RemoveDocumentAsync(previousKnowledgeDocId, document.AgentId, ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            document.IngestStatus = IngestStatus.Failed;
-            document.IngestErrorMessage = ex.Message;
-            _logger.LogError(ex, "Failed to re-index document {DocumentId} for agent {AgentId}", document.Id, document.AgentId);
-        }
-    }
-
-    private async Task ReindexExistingDocumentWithStreamAsync(Document document, Stream newStream, DocumentPermissionMetadata permissions, CancellationToken ct)
-    {
-        var previousKnowledgeDocId = document.KnowledgeDocId;
-        try
-        {
-            var fileName = FileTypeService.SanitizeFileName(document.Name);
-            var newKnowledgeDocId = await _knowledgeService.ImportDocumentAsync(newStream, fileName, document.AgentId, permissions, ct);
-
-            document.KnowledgeDocId = newKnowledgeDocId;
-            document.IngestStatus = IngestStatus.Success;
-            document.IngestErrorMessage = null;
-
-            if (!string.IsNullOrWhiteSpace(previousKnowledgeDocId) && previousKnowledgeDocId != newKnowledgeDocId)
-            {
-                await _knowledgeService.RemoveDocumentAsync(previousKnowledgeDocId, document.AgentId, ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            document.IngestStatus = IngestStatus.Failed;
-            document.IngestErrorMessage = ex.Message;
-            _logger.LogError(ex, "Failed to re-index document {DocumentId} with new stream for agent {AgentId}", document.Id, document.AgentId);
-        }
     }
 }
 

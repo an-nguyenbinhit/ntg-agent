@@ -31,7 +31,7 @@
 | Workflow Planning | Complete | Sprint sequence và Sprint 01-04 đã có trong `project-management/sprints/`. |
 | Application Design | Drafted | Domain/service boundaries được thể hiện qua UoB docs, ADR-001, `IKnowledgeService`, `AuthorizationContext`, RBAC và Kernel Memory adapter contracts hiện có. |
 | Units Generation | Complete | UoB-01 đến UoB-08 đã có và đã map vào Scrum execution artifacts. |
-| Code Generation | In Progress | Sprint 01-03 đã code-complete. Sprint 04 chuẩn bị bắt đầu với S-0501 Admin Portal API. |
+| Code Generation | In Progress | Sprint 01-03 đã code-complete. Sprint 04: S-0501, S-0502, S-0203 đã xong (Admin API, persona/provider config, watch-folder re-index); còn S-0105, S-0702, S-0503 integration verification. |
 | Build and Test | In Progress | Orchestrator unit tests là verification target hiện tại. |
 
 ## Current Recommendation

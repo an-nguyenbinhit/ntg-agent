@@ -84,6 +84,7 @@ builder.Services.Configure<DocumentIntelligenceSettings>(builder.Configuration.G
 builder.Services.Configure<ModelRoutingOptions>(builder.Configuration.GetSection("ModelRouting"));
 builder.Services.Configure<AnswerPipelineOptions>(builder.Configuration.GetSection("AnswerPipeline"));
 builder.Services.Configure<SlackOptions>(builder.Configuration.GetSection("Slack"));
+builder.Services.Configure<IngestionSourceOptions>(builder.Configuration.GetSection(IngestionSourceOptions.SectionName));
 
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
@@ -98,6 +99,8 @@ builder.Services.Configure<AnonymousUserSettings>(
 builder.Services.AddScoped<IAgentFactory,AgentFactory>();
 builder.Services.AddScoped<AgentService>();
 builder.Services.AddScoped<IKnowledgeService, KernelMemoryKnowledge>();
+builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+builder.Services.AddHostedService<DocumentWatcherService>();
 builder.Services.AddScoped<IModelRouter, ModelRouter>();
 builder.Services.AddScoped<IChatClientFactory, ProviderChatClientFactory>();
 builder.Services.AddScoped<IModelGateway, ModelGateway>();

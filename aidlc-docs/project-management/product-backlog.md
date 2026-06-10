@@ -64,7 +64,7 @@ project-management/
 |---|---|---|---|---|
 | S-0201 | Là HR, ingest `.docx/.md/PDF` → chunk + embed + index với citation metadata. | P0 | | [ ] |
 | S-0202 | Là HR, mỗi chunk gắn permission metadata (role/tag/BU/sensitivity). | P0 | | [ ] |
-| S-0203 | Là HR, re-index khi tài liệu mới/đổi (hash/timestamp/trigger), không cron cứng. | P2 | | [ ] |
+| S-0203 | Là HR, re-index khi tài liệu mới/đổi (hash/timestamp/trigger), không cron cứng. | P2 | | [x] |
 
 ### Epic UoB-03 — Slack Mention & Thread Context · [[units-channels#UoB-03: Slack Mention & Thread Context]]
 | ID | Story | Pri | Pts | Status |
