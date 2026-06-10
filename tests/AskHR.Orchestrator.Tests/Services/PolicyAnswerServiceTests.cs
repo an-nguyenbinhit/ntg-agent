@@ -8,8 +8,10 @@ using AskHR.Orchestrator.Services.Audit;
 using AskHR.Orchestrator.Services.Escalation;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.ModelRouting;
+using AskHR.Orchestrator.Models.Agents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.KernelMemory;
 using Moq;
@@ -42,6 +44,7 @@ public class PolicyAnswerServiceTests
             new AuditTextProtector(),
             new RuleBasedSeverityClassifier(),
             new WarmHandoffService(_context, new AuditTextProtector(), _auditSink.Object),
+            new MemoryCache(new MemoryCacheOptions()),
             Options.Create(new AnswerPipelineOptions { MinRelevance = 0.1 }),
             NullLogger<PolicyAnswerService>.Instance);
     }
@@ -69,6 +72,22 @@ public class PolicyAnswerServiceTests
     }
 
     [Test]
+    public async Task AnswerAsync_WhenAuditSinkFails_StillReturnsAnswer()
+    {
+        var request = new AskHrRequest(Guid.NewGuid(), "Out of scope?");
+        _knowledgeService
+            .Setup(x => x.SearchAsync(request.Question, request.AgentId, It.IsAny<AuthorizationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SearchResult());
+        _auditSink
+            .Setup(x => x.WriteAsync(It.IsAny<AuditEventDto>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("audit store unavailable"));
+
+        var response = await _service.AnswerAsync(request, AuthorizationContext.Anonymous());
+
+        Assert.That(response.FallbackReason, Is.EqualTo("no-grounding-citations"));
+    }
+
+    [Test]
     public async Task AnswerAsync_WithGroundingCitations_CallsAnswerGenerationCapability()
     {
         var request = new AskHrRequest(Guid.NewGuid(), "Annual leave policy?");
@@ -89,6 +108,43 @@ public class PolicyAnswerServiceTests
         Assert.That(response.AnswerText, Does.Contain("[1]"));
         _modelGateway.Verify(x => x.StreamCompleteAsync(
             It.Is<ModelCompletionRequest>(r => r.Capability == ModelCapability.AnswerGeneration && r.AgentId == request.AgentId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AnswerAsync_WhenApprovedSkillMatches_UsesSkillModelOverride()
+    {
+        var request = new AskHrRequest(Guid.NewGuid(), "Annual leave policy?");
+        _context.Skills.Add(new Skill
+        {
+            SkillId = "leave-policy",
+            Name = "Leave Policy",
+            Description = "Handles annual leave questions",
+            ApprovalStatus = "Approved",
+            Enabled = true,
+            Scope = new SkillScope { Topics = ["leave"] },
+            PrimaryProvider = "AzureOpenAI",
+            PrimaryModel = "gpt-4o"
+        });
+        await _context.SaveChangesAsync();
+
+        _knowledgeService
+            .Setup(x => x.SearchAsync(request.Question, request.AgentId, It.IsAny<AuthorizationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BuildSearchResult());
+        _modelGateway
+            .Setup(x => x.StreamCompleteAsync(It.IsAny<ModelCompletionRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Stream(
+                new ModelStreamResponse(
+                    "Employees have annual leave according to the cited policy [1].",
+                    new ModelRouteDto(ModelCapability.AnswerGeneration, "AzureOpenAI", "gpt-4o", RouteName: "skill:leave-policy"))));
+
+        await _service.AnswerAsync(request, AuthorizationContext.Anonymous());
+
+        _modelGateway.Verify(x => x.StreamCompleteAsync(
+            It.Is<ModelCompletionRequest>(r =>
+                r.ProviderOverride == "AzureOpenAI" &&
+                r.ModelOverride == "gpt-4o" &&
+                r.RouteNameOverride == "skill:leave-policy"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

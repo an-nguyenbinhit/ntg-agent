@@ -7,6 +7,7 @@ using AskHR.Common.Dtos.Audit;
 using AskHR.Common.Dtos.ModelRouting;
 using AskHR.Common.Dtos.Security;
 using AskHR.Orchestrator.Data;
+using AskHR.Orchestrator.Models.Agents;
 using AskHR.Orchestrator.Models.Chat;
 using AskHR.Orchestrator.Services.Audit;
 using AskHR.Orchestrator.Services.Escalation;
@@ -15,6 +16,7 @@ using AskHR.Orchestrator.Services.ModelRouting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.KernelMemory;
 
 namespace AskHR.Orchestrator.Services.Answers;
@@ -26,6 +28,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
     private const string TagSourceType = "sourceType";
     private const string TagSourceUrl = "sourceUrl";
     private const string HandoffMessagePrefix = "This topic needs a human HR advisor.";
+    private const string SkillRegistryCacheKey = "PolicyAnswerService:ApprovedSkills";
 
     private readonly IKnowledgeService _knowledgeService;
     private readonly IModelGateway _modelGateway;
@@ -34,6 +37,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
     private readonly IAuditTextProtector _auditTextProtector;
     private readonly ISeverityClassifier _severityClassifier;
     private readonly IWarmHandoffService _warmHandoffService;
+    private readonly IMemoryCache _cache;
     private readonly IOptions<AnswerPipelineOptions> _options;
     private readonly ILogger<PolicyAnswerService> _logger;
 
@@ -45,6 +49,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         IAuditTextProtector auditTextProtector,
         ISeverityClassifier severityClassifier,
         IWarmHandoffService warmHandoffService,
+        IMemoryCache cache,
         IOptions<AnswerPipelineOptions> options,
         ILogger<PolicyAnswerService> logger)
     {
@@ -55,6 +60,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         _auditTextProtector = auditTextProtector ?? throw new ArgumentNullException(nameof(auditTextProtector));
         _severityClassifier = severityClassifier ?? throw new ArgumentNullException(nameof(severityClassifier));
         _warmHandoffService = warmHandoffService ?? throw new ArgumentNullException(nameof(warmHandoffService));
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -157,6 +163,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             yield break;
         }
 
+        var selectedSkill = await ResolveSkillAsync(request, cancellationToken);
         var searchResult = await _knowledgeService.SearchAsync(request.Question, request.AgentId, authorization, cancellationToken);
         var citations = ExtractCitations(searchResult)
             .Where(x => x.Relevance >= _options.Value.MinRelevance)
@@ -195,14 +202,17 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         string? model = null;
         string? routeName = null;
 
-        var messages = BuildMessages(request.Question, citations);
+        var messages = BuildMessages(request.Question, citations, selectedSkill);
         await foreach (var modelResponse in _modelGateway.StreamCompleteAsync(
             new ModelCompletionRequest(
                 ModelCapability.AnswerGeneration,
                 request.AgentId,
                 messages,
                 new ChatOptions { Temperature = 0 },
-                "hr-policy"),
+                "hr-policy",
+                selectedSkill?.PrimaryProvider,
+                selectedSkill?.PrimaryModel,
+                selectedSkill is null ? null : $"skill:{selectedSkill.SkillId}"),
             cancellationToken))
         {
             provider ??= modelResponse.Route.Provider;
@@ -258,7 +268,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             MessageId: response.MessageId);
     }
 
-    private List<ChatMessage> BuildMessages(string question, List<AnswerCitationDto> citations)
+    private List<ChatMessage> BuildMessages(string question, List<AnswerCitationDto> citations, Skill? skill)
     {
         var facts = new StringBuilder();
         for (var i = 0; i < citations.Count; i++)
@@ -271,13 +281,21 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
                 .AppendLine(TrimSnippet(citation.Snippet));
         }
 
+        var skillInstructions = string.IsNullOrWhiteSpace(skill?.Instructions)
+            ? string.Empty
+            : $"""
+
+                Skill instructions:
+                {skill.Instructions.Trim()}
+                """;
+
         return
         [
             new ChatMessage(ChatRole.System, """
                 You answer HR policy questions only from the provided facts.
                 If the facts do not contain the answer, say you could not find reliable HR documentation.
                 Do not use outside knowledge. Keep the answer concise and cite source numbers like [1].
-                """),
+                """ + skillInstructions),
             new ChatMessage(ChatRole.User, $"""
                 Question:
                 {question}
@@ -287,6 +305,75 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
                 """)
         ];
     }
+
+    private async Task<Skill?> ResolveSkillAsync(AskHrRequest request, CancellationToken cancellationToken)
+    {
+        var skills = await _cache.GetOrCreateAsync(
+            SkillRegistryCacheKey,
+            async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
+                return await _context.Skills
+                    .AsNoTracking()
+                    .Where(x => x.Enabled && x.ApprovalStatus == "Approved")
+                    .ToListAsync(cancellationToken);
+            }) ?? [];
+
+        return skills
+            .Select(skill => new { Skill = skill, Score = ScoreSkill(skill, request.Question) })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Skill.Name)
+            .Select(x => x.Skill)
+            .FirstOrDefault();
+    }
+
+    private static int ScoreSkill(Skill skill, string question)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            return 0;
+        }
+
+        var normalizedQuestion = NormalizeMatchText(question);
+        var score = 0;
+
+        score += ContainsPhrase(normalizedQuestion, skill.SkillId) ? 100 : 0;
+        score += ContainsPhrase(normalizedQuestion, skill.Name) ? 60 : 0;
+        score += CountMatches(normalizedQuestion, skill.Scope.Topics) * 30;
+        score += CountMatches(normalizedQuestion, skill.Scope.Tags) * 20;
+        score += CountMatches(normalizedQuestion, skill.Scope.BusinessUnits) * 10;
+
+        foreach (var term in TokenizeForMatching($"{skill.Name} {skill.Description}"))
+        {
+            if (normalizedQuestion.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                score++;
+            }
+        }
+
+        return score;
+    }
+
+    private static int CountMatches(string normalizedQuestion, IEnumerable<string>? values)
+        => values?.Count(value => ContainsPhrase(normalizedQuestion, value)) ?? 0;
+
+    private static bool ContainsPhrase(string normalizedQuestion, string? value)
+    {
+        var normalizedValue = NormalizeMatchText(value);
+        return !string.IsNullOrWhiteSpace(normalizedValue)
+            && normalizedQuestion.Contains(normalizedValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> TokenizeForMatching(string value)
+        => NormalizeMatchText(value)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(x => x.Length >= 4)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private static string NormalizeMatchText(string? value)
+        => string.Join(' ', (value ?? string.Empty).ToLowerInvariant()
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private async Task<AskHrAnswerResponse> CompleteFallbackAsync(
         AskHrRequest request,
@@ -368,7 +455,14 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             response.Citations.Count,
             DateTimeOffset.UtcNow);
 
-        await _auditEventSink.WriteAsync(auditEvent, cancellationToken);
+        try
+        {
+            await _auditEventSink.WriteAsync(auditEvent, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write audit event {EventType} hash:{TextHash}", auditEvent.EventType, auditEvent.TextHash);
+        }
     }
 
     private async Task<AskHrAnswerResponse> PersistConversationTurnAsync(

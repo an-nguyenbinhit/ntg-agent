@@ -84,58 +84,10 @@
 
 @if (showEditor && currentSkill != null)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@(isEditing ? "Edit Skill" : "New Skill")</h5>
-                    <button type="button" class="btn-close" @onclick="CloseEditor"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Skill ID</label>
-                            <input type="text" class="form-control" @bind="currentSkill.SkillId" placeholder="e.g. leave-policy" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Name</label>
-                            <input type="text" class="form-control" @bind="currentSkill.Name" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" @bind="currentSkill.Description" rows="2"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Instructions (Progressive Disclosure)</label>
-                            <textarea class="form-control" @bind="currentSkill.Instructions" rows="4"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Primary Provider</label>
-                            <input type="text" class="form-control" @bind="currentSkill.PrimaryProvider" placeholder="e.g. AzureOpenAI" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Primary Model</label>
-                            <input type="text" class="form-control" @bind="currentSkill.PrimaryModel" placeholder="e.g. gpt-4o" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Owner</label>
-                            <input type="text" class="form-control" @bind="currentSkill.Owner" />
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-check mt-4">
-                                <input class="form-check-input" type="checkbox" @bind="currentSkill.Enabled" id="skillEnabled" />
-                                <label class="form-check-label" for="skillEnabled">Enabled</label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseEditor">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveSkill">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <SkillConfigEditor Skill="currentSkill"
+                       Title="@(isEditing ? "Edit Skill" : "New Skill")"
+                       OnSave="SaveSkill"
+                       OnCancel="CloseEditor" />
 }
 
 @code {
@@ -159,7 +111,12 @@
 
     private void CreateNewSkill()
     {
-        currentSkill = new SkillDto();
+        currentSkill = new SkillDto
+        {
+            Scope = new(),
+            AnswerPolicy = new(),
+            Escalation = new()
+        };
         isEditing = false;
         showEditor = true;
     }
@@ -177,17 +134,21 @@
             PrimaryModel = skill.PrimaryModel,
             Owner = skill.Owner,
             Enabled = skill.Enabled,
-            Scope = skill.Scope ?? new(),
-            AnswerPolicy = skill.AnswerPolicy ?? new(),
-            Escalation = skill.Escalation ?? new()
+            ApprovalStatus = skill.ApprovalStatus,
+            Version = skill.Version,
+            Tools = skill.Tools is null ? [] : [.. skill.Tools],
+            Attachments = skill.Attachments is null ? [] : [.. skill.Attachments],
+            Scope = CloneScope(skill.Scope),
+            AnswerPolicy = CloneAnswerPolicy(skill.AnswerPolicy),
+            Escalation = CloneEscalation(skill.Escalation)
         };
         isEditing = true;
         showEditor = true;
     }
 
-    private async Task SaveSkill()
+    private async Task SaveSkill(SkillDto skill)
     {
-        if (currentSkill == null) return;
+        currentSkill = skill;
 
         if (isEditing)
         {
@@ -212,4 +173,33 @@
     {
         showEditor = false;
     }
+
+    private static SkillScopeDto CloneScope(SkillScopeDto? scope)
+        => scope is null
+            ? new()
+            : new SkillScopeDto
+            {
+                Topics = scope.Topics is null ? [] : [.. scope.Topics],
+                Tags = scope.Tags is null ? [] : [.. scope.Tags],
+                BusinessUnits = scope.BusinessUnits is null ? [] : [.. scope.BusinessUnits]
+            };
+
+    private static SkillAnswerPolicyDto CloneAnswerPolicy(SkillAnswerPolicyDto? policy)
+        => policy is null
+            ? new()
+            : new SkillAnswerPolicyDto
+            {
+                RequireCitation = policy.RequireCitation,
+                RefuseIfExpired = policy.RefuseIfExpired,
+                ClarifyingQuestions = policy.ClarifyingQuestions is null ? [] : [.. policy.ClarifyingQuestions]
+            };
+
+    private static SkillEscalationDto CloneEscalation(SkillEscalationDto? escalation)
+        => escalation is null
+            ? new()
+            : new SkillEscalationDto
+            {
+                FallbackContact = escalation.FallbackContact,
+                SeverityHint = escalation.SeverityHint
+            };
 }

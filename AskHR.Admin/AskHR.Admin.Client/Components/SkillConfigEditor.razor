@@ -1,0 +1,224 @@
+@using AskHR.Common.Dtos.Agents
+
+<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@Title</h5>
+                <button type="button" class="btn-close" @onclick="Cancel"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3">
+                    @for (var i = 0; i < Steps.Length; i++)
+                    {
+                        var stepIndex = i;
+                        <li class="nav-item">
+                            <button type="button" class="nav-link @(activeStep == stepIndex ? "active" : null)" @onclick="() => activeStep = stepIndex">
+                                @Steps[stepIndex]
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                @if (activeStep == 0)
+                {
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Skill ID</label>
+                            <input type="text" class="form-control" @bind="Skill.SkillId" placeholder="leave-policy" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="form-control" @bind="Skill.Name" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" @bind="Skill.Description" rows="3"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Owner</label>
+                            <input type="text" class="form-control" @bind="Skill.Owner" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Approval</label>
+                            <select class="form-select" @bind="Skill.ApprovalStatus">
+                                <option>Draft</option>
+                                <option>Pending</option>
+                                <option>Approved</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="Skill.Enabled" id="skill-enabled" />
+                                <label class="form-check-label" for="skill-enabled">Enabled</label>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (activeStep == 1)
+                {
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Topics</label>
+                            <input type="text" class="form-control" @bind="ScopeTopicsText" placeholder="leave, payroll, onboarding" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Tags</label>
+                            <input type="text" class="form-control" @bind="ScopeTagsText" placeholder="public-all, hr-policy" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Business Units</label>
+                            <input type="text" class="form-control" @bind="ScopeBusinessUnitsText" placeholder="finance, engineering" />
+                        </div>
+                    </div>
+                }
+                else if (activeStep == 2)
+                {
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Instructions</label>
+                            <textarea class="form-control" @bind="Skill.Instructions" rows="5"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Provider</label>
+                            <input type="text" class="form-control" @bind="Skill.PrimaryProvider" placeholder="AzureOpenAI" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Model</label>
+                            <input type="text" class="form-control" @bind="Skill.PrimaryModel" placeholder="gpt-4o" />
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="Skill.AnswerPolicy.RequireCitation" id="require-citation" />
+                                <label class="form-check-label" for="require-citation">Require citation</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="Skill.AnswerPolicy.RefuseIfExpired" id="refuse-expired" />
+                                <label class="form-check-label" for="refuse-expired">Refuse expired content</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Clarifying Questions</label>
+                            <textarea class="form-control" @bind="ClarifyingQuestionsText" rows="3"></textarea>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Fallback Contact</label>
+                            <input type="text" class="form-control" @bind="Skill.Escalation.FallbackContact" placeholder="hr-advisors@company.com" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Severity Hint</label>
+                            <select class="form-select" @bind="Skill.Escalation.SeverityHint">
+                                <option>P1</option>
+                                <option>P2</option>
+                                <option>P3</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Tools</label>
+                            <input type="text" class="form-control" @bind="ToolsText" placeholder="policy-search, calendar" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Attachments</label>
+                            <input type="text" class="form-control" @bind="AttachmentsText" placeholder="benefits.pdf, handbook.md" />
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer justify-content-between">
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" @onclick="Previous" disabled="@(activeStep == 0)">Previous</button>
+                    <button type="button" class="btn btn-outline-primary" @onclick="Next" disabled="@(activeStep == Steps.Length - 1)">Next</button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Steps = ["Basics", "Scope", "Answer Policy", "Escalation"];
+    private int activeStep;
+
+    [Parameter, EditorRequired]
+    public SkillDto Skill { get; set; } = new();
+
+    [Parameter]
+    public string Title { get; set; } = "Skill";
+
+    [Parameter]
+    public EventCallback<SkillDto> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string ScopeTopicsText
+    {
+        get => ToCsv(Skill.Scope.Topics);
+        set => Skill.Scope.Topics = FromCsv(value);
+    }
+
+    private string ScopeTagsText
+    {
+        get => ToCsv(Skill.Scope.Tags);
+        set => Skill.Scope.Tags = FromCsv(value);
+    }
+
+    private string ScopeBusinessUnitsText
+    {
+        get => ToCsv(Skill.Scope.BusinessUnits);
+        set => Skill.Scope.BusinessUnits = FromCsv(value);
+    }
+
+    private string ClarifyingQuestionsText
+    {
+        get => ToMultiline(Skill.AnswerPolicy.ClarifyingQuestions);
+        set => Skill.AnswerPolicy.ClarifyingQuestions = FromMultiline(value);
+    }
+
+    private string ToolsText
+    {
+        get => ToCsv(Skill.Tools);
+        set => Skill.Tools = FromCsv(value);
+    }
+
+    private string AttachmentsText
+    {
+        get => ToCsv(Skill.Attachments);
+        set => Skill.Attachments = FromCsv(value);
+    }
+
+    private void Previous() => activeStep = Math.Max(0, activeStep - 1);
+
+    private void Next() => activeStep = Math.Min(Steps.Length - 1, activeStep + 1);
+
+    private Task Save() => OnSave.InvokeAsync(Skill);
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private static string ToCsv(IEnumerable<string>? values) => string.Join(", ", values ?? []);
+
+    private static List<string> FromCsv(string? value)
+        => (value ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static string ToMultiline(IEnumerable<string>? values) => string.Join(Environment.NewLine, values ?? []);
+
+    private static List<string> FromMultiline(string? value)
+        => (value ?? string.Empty)
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+}

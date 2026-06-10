@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using AskHR.Common.Dtos.Constants;
 using AskHR.Orchestrator.Models.AnonymousSessions;
+using AskHR.Orchestrator.Models.Audit;
 using AskHR.Orchestrator.Models.Chat;
 using AskHR.Orchestrator.Models.Documents;
 using AskHR.Orchestrator.Models.Identity;
@@ -52,6 +53,8 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
     public DbSet<TokenUsage> TokenUsages { get; set; } = null!;
 
     public DbSet<AnonymousSession> AnonymousSessions { get; set; } = null!;
+
+    public DbSet<AuditEvent> AuditEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -375,6 +378,20 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_TokenUsage_UserIdOrSessionId",
                 "([UserId] IS NOT NULL AND [SessionId] IS NULL) OR ([UserId] IS NULL AND [SessionId] IS NOT NULL)"));
+        });
+
+        modelBuilder.Entity<AuditEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.EventType).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Channel).HasMaxLength(64).IsRequired();
+            e.Property(x => x.TextHash).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(128);
+            e.Property(x => x.Model).HasMaxLength(256);
+            e.Property(x => x.FallbackReason).HasMaxLength(512);
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => x.TextHash);
+            e.HasIndex(x => new { x.AgentId, x.Channel, x.CreatedAt });
         });
 
         // AnonymousSession configuration

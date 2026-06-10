@@ -102,18 +102,18 @@ public class SkillsController : ControllerBase
             Instructions = skill.Instructions,
             Scope = new SkillScopeDto
             {
-                Topics = skill.Scope.Topics,
-                Tags = skill.Scope.Tags,
-                BusinessUnits = skill.Scope.BusinessUnits
+                Topics = skill.Scope.Topics ?? [],
+                Tags = skill.Scope.Tags ?? [],
+                BusinessUnits = skill.Scope.BusinessUnits ?? []
             },
             AnswerPolicy = new SkillAnswerPolicyDto
             {
                 RequireCitation = skill.AnswerPolicy.RequireCitation,
                 RefuseIfExpired = skill.AnswerPolicy.RefuseIfExpired,
-                ClarifyingQuestions = skill.AnswerPolicy.ClarifyingQuestions
+                ClarifyingQuestions = skill.AnswerPolicy.ClarifyingQuestions ?? []
             },
-            Tools = skill.Tools,
-            Attachments = skill.Attachments,
+            Tools = skill.Tools ?? [],
+            Attachments = skill.Attachments ?? [],
             Escalation = new SkillEscalationDto
             {
                 FallbackContact = skill.Escalation.FallbackContact,
@@ -139,16 +139,20 @@ public class SkillsController : ControllerBase
         skill.PrimaryProvider = dto.PrimaryProvider;
         skill.PrimaryModel = dto.PrimaryModel;
         
-        skill.Scope.Topics = dto.Scope.Topics;
-        skill.Scope.Tags = dto.Scope.Tags;
-        skill.Scope.BusinessUnits = dto.Scope.BusinessUnits;
+        dto.Scope ??= new();
+        dto.AnswerPolicy ??= new();
+        dto.Escalation ??= new();
+
+        skill.Scope.Topics = dto.Scope.Topics ?? [];
+        skill.Scope.Tags = dto.Scope.Tags ?? [];
+        skill.Scope.BusinessUnits = dto.Scope.BusinessUnits ?? [];
 
         skill.AnswerPolicy.RequireCitation = dto.AnswerPolicy.RequireCitation;
         skill.AnswerPolicy.RefuseIfExpired = dto.AnswerPolicy.RefuseIfExpired;
-        skill.AnswerPolicy.ClarifyingQuestions = dto.AnswerPolicy.ClarifyingQuestions;
+        skill.AnswerPolicy.ClarifyingQuestions = dto.AnswerPolicy.ClarifyingQuestions ?? [];
 
-        skill.Tools = dto.Tools;
-        skill.Attachments = dto.Attachments;
+        skill.Tools = dto.Tools ?? [];
+        skill.Attachments = dto.Attachments ?? [];
 
         skill.Escalation.FallbackContact = dto.Escalation.FallbackContact;
         skill.Escalation.SeverityHint = dto.Escalation.SeverityHint;

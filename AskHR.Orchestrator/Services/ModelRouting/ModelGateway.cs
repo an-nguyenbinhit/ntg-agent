@@ -21,7 +21,7 @@ public sealed class ModelGateway : IModelGateway
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var route = await _router.ResolveAsync(request.Capability, request.AgentId, request.DataClass, cancellationToken);
+        var route = await ResolveRouteAsync(request, cancellationToken);
         var client = _chatClientFactory.Create(route);
 
         _logger.LogDebug(
@@ -43,7 +43,7 @@ public sealed class ModelGateway : IModelGateway
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var route = await _router.ResolveAsync(request.Capability, request.AgentId, request.DataClass, cancellationToken);
+        var route = await ResolveRouteAsync(request, cancellationToken);
         var client = _chatClientFactory.Create(route);
         var routeDto = route.ToDto();
 
@@ -98,4 +98,46 @@ public sealed class ModelGateway : IModelGateway
 
         return builder.ToString();
     }
+
+    private async Task<ResolvedModelRoute> ResolveRouteAsync(ModelCompletionRequest request, CancellationToken cancellationToken)
+    {
+        var route = await _router.ResolveAsync(request.Capability, request.AgentId, request.DataClass, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(request.ProviderOverride) && string.IsNullOrWhiteSpace(request.ModelOverride))
+        {
+            return string.IsNullOrWhiteSpace(request.RouteNameOverride)
+                ? route
+                : route with { RouteName = request.RouteNameOverride.Trim() };
+        }
+
+        var provider = string.IsNullOrWhiteSpace(request.ProviderOverride)
+            ? route.Provider
+            : request.ProviderOverride.Trim();
+        var model = string.IsNullOrWhiteSpace(request.ModelOverride)
+            ? route.Model
+            : request.ModelOverride.Trim();
+        var routeName = string.IsNullOrWhiteSpace(request.RouteNameOverride)
+            ? route.RouteName
+            : request.RouteNameOverride.Trim();
+
+        var approvedRoute = route.Fallbacks
+            .Prepend(route)
+            .FirstOrDefault(x =>
+                string.Equals(x.Provider, provider, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.Model, model, StringComparison.OrdinalIgnoreCase) &&
+                IsApprovedForDataClass(x, request.DataClass));
+
+        if (approvedRoute is null)
+        {
+            throw new InvalidOperationException(
+                $"Skill model override '{provider}/{model}' is not an approved route for capability '{request.Capability}' and data class '{request.DataClass ?? "default"}'.");
+        }
+
+        return approvedRoute with { RouteName = routeName };
+    }
+
+    private static bool IsApprovedForDataClass(ResolvedModelRoute route, string? dataClass)
+        => string.IsNullOrWhiteSpace(dataClass) ||
+           string.IsNullOrWhiteSpace(route.DataClass) ||
+           string.Equals(route.DataClass, dataClass, StringComparison.OrdinalIgnoreCase);
 }

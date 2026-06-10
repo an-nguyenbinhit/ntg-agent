@@ -8,7 +8,10 @@ public sealed record ModelCompletionRequest(
     Guid? AgentId,
     IReadOnlyList<ChatMessage> Messages,
     ChatOptions? Options = null,
-    string? DataClass = null);
+    string? DataClass = null,
+    string? ProviderOverride = null,
+    string? ModelOverride = null,
+    string? RouteNameOverride = null);
 
 public sealed record ModelCompletionResponse(
     string Text,
