@@ -6,7 +6,7 @@
 - **Project Type**: Brownfield application với AI-DLC requirements baseline
 - **Start Date**: 2026-06-06T00:00:00Z
 - **Current Phase**: CONSTRUCTION
-- **Current Stage**: Sprint 04 - Admin Portal & Cấu Hình
+- **Current Stage**: Sprint 05 - Web Chat Channel (Completed)
 
 ## Workspace State
 
@@ -28,19 +28,19 @@
 | Workspace Detection | Complete | Đã detect AskHR là ứng dụng .NET brownfield; AI-DLC docs định nghĩa baseline requirement trong repo này. |
 | Requirements Analysis | Complete | Requirement source và UoB decomposition đã có; kickoff decisions được track trong `requirements.md` sections 3 và 10. |
 | User Stories | Complete | Product backlog đã map UoB epics sang stories S-0101..S-0803 trong `project-management/product-backlog.md`. |
-| Workflow Planning | Complete | Sprint sequence và Sprint 01-04 đã có trong `project-management/sprints/`. |
+| Workflow Planning | Complete | Sprint sequence và Sprint 01-05 đã có trong `project-management/sprints/`. |
 | Application Design | Drafted | Domain/service boundaries được thể hiện qua UoB docs, ADR-001, `IKnowledgeService`, `AuthorizationContext`, RBAC và Kernel Memory adapter contracts hiện có. |
 | Units Generation | Complete | UoB-01 đến UoB-08 đã có và đã map vào Scrum execution artifacts. |
-| Code Generation | In Progress | Sprint 01-03 đã code-complete. Sprint 04: S-0501, S-0502, S-0203 đã xong (Admin API, persona/provider config, watch-folder re-index); còn S-0105, S-0702, S-0503 integration verification. |
-| Build and Test | In Progress | Orchestrator unit tests là verification target hiện tại. |
+| Code Generation | Complete | Sprint 01-05 đã code-complete. S-0501, S-0502, S-0203 (Admin API, persona/provider config, watch-folder re-index), và S-0105, S-0702, S-0503 integration đã hoàn tất. |
+| Build and Test | Complete | Toàn bộ Unit Tests và Integration Tests cho AskHR.Orchestrator đã pass. |
 
 ## Current Recommendation
 
-### Current Recommendation Override - 2026-06-08
+### Current Recommendation Override - 2026-06-10
 
-1. Sprint 03 (Web Chat & Escalation) đã hoàn thành toàn bộ To-Do và test integration cơ bản.
-2. S-0201 production re-ingest remains blocked until corpus/index inventory is available; do not use old default index for production rollout.
-3. Current Sprint 04 focus: Triển khai REST Endpoints cho Admin Portal (S-0501) để quản lý tài liệu, phân quyền (RBAC metadata), theo dõi quá trình re-ingest và trạng thái document. Mở đầu bằng việc thiết kế cấu trúc API cho Knowledge management.
+1. Sprint 05 (Web Chat Channel) đã hoàn tất. Blazor WebAssembly UI đã hỗ trợ realtime streaming, Conversation History, và Feedback.
+2. `WebIdentityResolver` đã được tích hợp đúng cơ chế deny-by-default với `AuthorizationContext`.
+3. Đề xuất: Kick-off các Sprint tiếp theo (ví dụ: MS Teams Channel S-0901 nếu đã duyệt kinh phí Bot Service).
 
 Sprint 02 đã code-complete cho answer pipeline/model routing/audit logging/Slack gateway. Trạng thái tiếp theo:
 

@@ -1,6 +1,7 @@
 using AskHR.Common.Dtos.ModelRouting;
 using AskHR.Orchestrator.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace AskHR.Orchestrator.Services.ModelRouting;
@@ -9,11 +10,13 @@ public sealed class ModelRouter : IModelRouter
 {
     private readonly AgentDbContext _dbContext;
     private readonly IOptions<ModelRoutingOptions> _options;
+    private readonly IConfiguration _configuration;
 
-    public ModelRouter(AgentDbContext dbContext, IOptions<ModelRoutingOptions> options)
+    public ModelRouter(AgentDbContext dbContext, IOptions<ModelRoutingOptions> options, IConfiguration configuration)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     }
 
     public async Task<ResolvedModelRoute> ResolveAsync(
@@ -22,13 +25,28 @@ public sealed class ModelRouter : IModelRouter
         string? dataClass = null,
         CancellationToken cancellationToken = default)
     {
-        var configuredRoute = _options.Value.Routes.TryGetValue(capability, out var route)
-            ? route
-            : null;
+        ResolvedModelRoute? resolved = null;
 
-        var resolved = configuredRoute is not null
-            ? await ResolveConfiguredRouteAsync(capability, configuredRoute, cancellationToken)
-            : null;
+        var capabilityString = capability.ToString();
+        var dbRoute = await _dbContext.ModelRoutes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Enabled && r.Feature == capabilityString, cancellationToken);
+
+        if (dbRoute is not null)
+        {
+            resolved = await ResolveDbRouteAsync(capability, dbRoute, cancellationToken);
+        }
+
+        if (resolved is null)
+        {
+            var configuredRoute = _options.Value.Routes.TryGetValue(capability, out var route)
+                ? route
+                : null;
+
+            resolved = configuredRoute is not null
+                ? await ResolveConfiguredRouteAsync(capability, configuredRoute, cancellationToken)
+                : null;
+        }
 
         resolved ??= await ResolveAgentRouteAsync(capability, agentId, cancellationToken);
 
@@ -44,6 +62,58 @@ public sealed class ModelRouter : IModelRouter
         }
 
         return resolved;
+    }
+
+    private async Task<ResolvedModelRoute?> ResolveDbRouteAsync(ModelCapability capability, Models.Providers.ModelRoute dbRoute, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dbRoute.PrimaryProvider) || string.IsNullOrWhiteSpace(dbRoute.PrimaryModel))
+            return null;
+
+        var primaryRoute = await BuildResolvedRouteAsync(capability, dbRoute.PrimaryProvider, dbRoute.PrimaryModel, dbRoute.DataPolicy, cancellationToken);
+        if (primaryRoute is null) return null;
+
+        var fallbacks = new List<ResolvedModelRoute>();
+        if (dbRoute.Fallbacks != null)
+        {
+            foreach (var fallback in dbRoute.Fallbacks)
+            {
+                var fbRoute = await BuildResolvedRouteAsync(capability, fallback.Provider, fallback.Model, dbRoute.DataPolicy, cancellationToken);
+                if (fbRoute is not null)
+                {
+                    fallbacks.Add(fbRoute);
+                }
+            }
+        }
+
+        return primaryRoute with { Fallbacks = fallbacks };
+    }
+
+    private async Task<ResolvedModelRoute?> BuildResolvedRouteAsync(ModelCapability capability, string provider, string model, string dataClass, CancellationToken cancellationToken)
+    {
+        var metadata = await _dbContext.ProviderMetadatas
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Provider == provider && m.ApprovalStatus == "ProductionApproved", cancellationToken);
+
+        if (metadata is null) return null;
+
+        string? apiKey = null;
+        string? endpoint = null;
+
+        if (!string.IsNullOrWhiteSpace(metadata.SecretReference))
+        {
+            apiKey = _configuration[metadata.SecretReference] ?? _configuration[$"{metadata.SecretReference}:ApiKey"];
+            endpoint = _configuration[$"{metadata.SecretReference}:Endpoint"];
+        }
+
+        return new ResolvedModelRoute(
+            capability,
+            provider,
+            model,
+            TrimToNull(endpoint),
+            TrimToNull(apiKey),
+            null,
+            TrimToNull(dataClass),
+            []);
     }
 
     private async Task<ResolvedModelRoute?> ResolveConfiguredRouteAsync(

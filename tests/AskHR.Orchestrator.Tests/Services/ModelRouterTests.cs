@@ -3,7 +3,9 @@ using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Models.Agents;
 using AskHR.Orchestrator.Services.ModelRouting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace AskHR.Orchestrator.Tests.Services;
 
@@ -45,7 +47,8 @@ public class ModelRouterTests
                         DataClass = "hr-policy"
                     }
                 }
-            }));
+            }),
+            new Mock<IConfiguration>().Object);
 
         var route = await router.ResolveAsync(ModelCapability.AnswerGeneration, dataClass: "hr-policy");
 
@@ -71,7 +74,7 @@ public class ModelRouterTests
         });
         await _context.SaveChangesAsync();
 
-        var router = new ModelRouter(_context, Options.Create(new ModelRoutingOptions()));
+        var router = new ModelRouter(_context, Options.Create(new ModelRoutingOptions()), new Mock<IConfiguration>().Object);
 
         var route = await router.ResolveAsync(ModelCapability.IntentClassifier);
 

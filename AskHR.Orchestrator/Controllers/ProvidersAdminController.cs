@@ -23,18 +23,19 @@ public class ProvidersAdminController : ControllerBase
     [HttpGet("metadata")]
     public async Task<IActionResult> GetProviderMetadatas()
     {
-        var metadatas = await _dbContext.ProviderMetadatas
+        var dbMetadatas = await _dbContext.ProviderMetadatas.AsNoTracking().ToListAsync();
+        var metadatas = dbMetadatas
             .Select(p => new ProviderMetadataDto
             {
                 Id = p.Id,
                 Provider = p.Provider,
                 ApprovalStatus = p.ApprovalStatus,
                 DataResidency = p.DataResidency,
-                Capabilities = p.Capabilities,
+                Capabilities = p.Capabilities ?? [],
                 SecretReference = p.SecretReference,
                 HealthStatus = p.HealthStatus
             })
-            .ToListAsync();
+            .ToList();
         return Ok(metadatas);
     }
 
@@ -90,19 +91,20 @@ public class ProvidersAdminController : ControllerBase
     [HttpGet("routes")]
     public async Task<IActionResult> GetModelRoutes()
     {
-        var routes = await _dbContext.ModelRoutes
+        var dbRoutes = await _dbContext.ModelRoutes.AsNoTracking().ToListAsync();
+        var routes = dbRoutes
             .Select(r => new ModelRouteDto
             {
                 Id = r.Id,
                 Feature = r.Feature,
                 PrimaryProvider = r.PrimaryProvider,
                 PrimaryModel = r.PrimaryModel,
-                Fallbacks = r.Fallbacks.Select(f => new FallbackRouteDto { Provider = f.Provider, Model = f.Model }).ToList(),
+                Fallbacks = r.Fallbacks?.Select(f => new FallbackRouteDto { Provider = f.Provider, Model = f.Model }).ToList() ?? [],
                 RequiredCapabilities = r.RequiredCapabilities,
                 DataPolicy = r.DataPolicy,
                 Enabled = r.Enabled
             })
-            .ToListAsync();
+            .ToList();
         return Ok(routes);
     }
 
