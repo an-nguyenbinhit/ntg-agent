@@ -5,7 +5,7 @@ using Microsoft.KernelMemory;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Models.AnonymousSessions;
 using AskHR.Orchestrator.Models.Configuration;
-using AskHR.Orchestrator.Channels.Teams;
+
 using AskHR.Orchestrator.Services.Agents;
 using AskHR.Orchestrator.Services.Answers;
 using AskHR.Orchestrator.Services.AnonymousSessions;
@@ -85,7 +85,7 @@ builder.Services.Configure<DocumentIntelligenceSettings>(builder.Configuration.G
 builder.Services.Configure<ModelRoutingOptions>(builder.Configuration.GetSection("ModelRouting"));
 builder.Services.Configure<AnswerPipelineOptions>(builder.Configuration.GetSection("AnswerPipeline"));
 builder.Services.Configure<SlackOptions>(builder.Configuration.GetSection("Slack"));
-builder.Services.Configure<TeamsOptions>(builder.Configuration.GetSection(TeamsOptions.SectionName));
+
 builder.Services.Configure<IngestionSourceOptions>(builder.Configuration.GetSection(IngestionSourceOptions.SectionName));
 builder.Services.Configure<ReingestMigrationOptions>(builder.Configuration.GetSection(ReingestMigrationOptions.SectionName));
 
@@ -123,9 +123,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ISlackRequestVerifier, SlackRequestVerifier>();
 builder.Services.AddSingleton<ISlackEventDeduplicator, MemorySlackEventDeduplicator>();
 builder.Services.AddScoped<ISlackIdentityResolver, SlackIdentityResolver>();
-builder.Services.AddSingleton<ITeamsActivityDeduplicator, MemoryTeamsActivityDeduplicator>();
-builder.Services.AddScoped<ITeamsIdentityResolver, TeamsIdentityResolver>();
-builder.Services.AddScoped<ITeamsAdaptiveCardFormatter, TeamsAdaptiveCardFormatter>();
+
 builder.Services.AddScoped<IUserMemoryService, UserMemoryService>();
 builder.Services.AddScoped<IDocumentAnalysisService, DocumentAnalysisService>();
 builder.Services.AddScoped<ITokenTrackingService, TokenTrackingService>();
@@ -140,7 +138,7 @@ builder.Services.AddHttpClient<ISlackIdentityResolver, SlackIdentityResolver>(cl
 {
     client.BaseAddress = new Uri("https://slack.com/api/");
 });
-builder.Services.AddHttpClient<ITeamsResponseClient, TeamsResponseClient>();
+
 
 builder.Services.AddScoped<IKernelMemory>(serviceProvider =>
 {

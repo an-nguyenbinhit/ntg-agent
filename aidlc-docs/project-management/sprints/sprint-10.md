@@ -27,6 +27,3 @@ updated: 2026-06-11
 - [ ] S-0501: Tạo `EditDocumentModal.razor` cho phép edit Roles, BusinessUnits, SensitivityLevel.
 - [ ] S-0501: Tích hợp nút Edit và Reindex vào lưới dữ liệu của `DocumentsTab.razor`.
 
-### Blocked
-
-- [-] S-0901: MS Teams manual verification (Chờ hạ tầng Azure Bot Service).

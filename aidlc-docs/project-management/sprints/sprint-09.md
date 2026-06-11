@@ -3,8 +3,8 @@ type: sprint
 sprint: "09"
 status: planned
 owner: Scrum Master
-tags: [scrum, sprint, rbac, security, teams]
-related: ["[[product-backlog]]", "[[units-security-identity#UoB-04: RBAC / Identity & Access]]", "[[units-retrieval-answer#UoB-01: Answer Policy Question]]", "[[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]]", "[[TASK-0901-ms-teams-channel]]"]
+tags: [scrum, sprint, rbac, security]
+related: ["[[product-backlog]]", "[[units-security-identity#UoB-04: RBAC / Identity & Access]]", "[[units-retrieval-answer#UoB-01: Answer Policy Question]]", "[[units-retrieval-answer#UoB-02: Ingest & Index HR Documents]]"]
 start: 2026-06-11
 end: 2026-06-24
 created: 2026-06-11
@@ -13,7 +13,7 @@ updated: 2026-06-11
 
 # Sprint 09 - RBAC Hardening & Operational Closure
 
-> **Sprint Goal**: Khong rebuild P0 foundation da co. Sprint nay dong cac gap con lai quanh RBAC verification, operational docs, va MS Teams verification blocker.
+> **Sprint Goal**: Khong rebuild P0 foundation da co. Sprint nay dong cac gap con lai quanh RBAC verification va operational docs.
 
 ## Scope Decisions
 
@@ -35,7 +35,7 @@ updated: 2026-06-11
 
 ### Blocked
 
-- [-] **S-0901 MS Teams manual verification**: Code gateway/resolver/card formatter da co test. Manual verification can Azure Bot Service + Teams app registration/ngrok endpoint.
+
 - [-] **Historical corpus re-ingest**: Can corpus/index inventory hoac backup export de re-ingest tai lieu cu voi permission metadata moi.
 
 ## Verification

@@ -164,21 +164,17 @@ project-management/
 | S-0802 | Là User, xem conversation history và gửi feedback trên web. | P3 | | [x] |
 | S-0803 | Là hệ thống, web identity resolver → Authorization Context. | P2 | | [x] |
 
-### Epic UoB-09 — MS Teams Channel · [[units-channels#UoB-09: MS Teams Channel]]
-| ID | Story | Pri | Pts | Status |
-|---|---|---|---|---|
-| S-0901 | Là User, chat qua MS Teams với SSO. | P2 | | [/] |
-
 ## Đề xuất thứ tự Sprint (gợi ý)
 
 1. **Nền tảng (P0)**: S-0201, S-0202, S-0401, S-0402, S-0103 — không có RBAC + index thì các UoB khác không chạy đúng.
 2. **Core trả lời (P1)**: S-0101, S-0102, S-0301, S-0303, S-0601, S-0701.
 3. **Hoàn thiện (P2/P3)**: phần còn lại.
 
+
 ## Changelog
 
 - 2026-06-07: Gộp `README.md` (mô tả lớp PM + cấu trúc + quy ước) vào đầu file này; cập nhật link Epic sang dạng `[[units-*#UoB-xx]]` sau khi hợp nhất tài liệu UoB.
-- 2026-06-11: Thêm UoB-09 / S-0901 cho MS Teams Channel; code gateway/resolver/card formatter đang In Progress, manual Azure Bot Service verification chờ hạ tầng.
+
 - 2026-06-11: Sprint 08 Admin Portal implementation completed for S-0503, S-0602/S-0603, and S-0702; added monitoring, feedback, and provider-routing screens.
 - 2026-06-11: Bắt đầu Sprint 09; cập nhật trạng thái các task P0 (S-0103, S-0201, S-0202, S-0401, S-0402) thành Done vì foundation đã được build từ Sprint 01.
 - 2026-06-11: Rà soát toàn bộ codebase, chuyển sang Sprint 10; cập nhật Done cho các tính năng thực tế đã code xong ở các sprint cũ (Slack, Handoff, Skill). S-0501 chuyển sang In Progress.

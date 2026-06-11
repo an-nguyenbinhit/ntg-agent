@@ -1,6 +1,6 @@
 ---
 type: uob
-uob: ["03", "08", "09"]
+uob: ["03", "08"]
 status: draft
 owner: HR / Eng
 tags: [slack, web-chat, escalation, rbac]
@@ -17,7 +17,7 @@ updated: 2026-06-07
 
 - [[#UoB-03: Slack Mention & Thread Context]]
 - [[#UoB-08: Web Chat Channel]]
-- [[#UoB-09: MS Teams Channel]]
+
 
 
 ## UoB-03: Slack Mention & Thread Context
@@ -444,40 +444,4 @@ Web Chat implement `WebChatGateway`, cùng normalized contract với Slack gatew
 ## Changelog (Consolidation)
 
 - 2026-06-07: Hợp nhất UoB-03 (Slack Mention & Thread Context) + UoB-08 (Web Chat Channel) vào `units-channels.md`. Mỗi UoB là một section H2, sub-section demote một cấp, per-UoB Table of Contents thay bằng "Mục lục" ở đầu file, và wikilink cập nhật sang dạng `[[file#heading]]`. Nội dung nghiệp vụ giữ nguyên.
-- 2026-06-11: Thêm UoB-09 (MS Teams Channel) để tích hợp Bot Service.
 
-## UoB-09: MS Teams Channel
-
-> **AI-DLC Inception artifact.** UoB này bổ sung MS Teams Channel cho AskHR, sử dụng Azure Bot Framework, dùng chung RAG Pipeline, Authorization Context, feedback và audit contracts.
-
-### 1. Overview
-
-MS Teams là channel dành cho nhân viên sử dụng hệ sinh thái Microsoft. Gateway chịu trách nhiệm nhận webhook, resolve MS Teams user (qua Azure AD SSO/email) thành identity nội bộ, gọi RAG Pipeline và trả kết quả về Teams dưới dạng Adaptive Cards hoặc Markdown.
-
-### 2. Scope
-
-| Nhóm | Nội dung |
-|---|---|
-| In scope | MS Teams webhook endpoint, DM, `@mention`, Azure AD identity mapping, Adaptive Cards rendering. |
-| Out of scope | Answer generation, RAG logic (sử dụng UoB-01). |
-
-### 3. Decisions
-
-#### 3.1 Adaptive Cards vs Markdown
-Sử dụng **Adaptive Cards** cho MS Teams để tối ưu UX, hỗ trợ feedback actions (Like/Dislike buttons) trực tiếp trên Card.
-
-#### 3.2 MS Teams Identity Resolution
-Ưu tiên map `aadObjectId` từ Teams Activity sang SSO mapping của hệ thống nội bộ. Nếu không có `aadObjectId`, map qua `email` hoặc `userPrincipalName`. Mặc định deny-by-default nếu không map được.
-
-### 4. Implementation Notes
-
-- Webhook endpoint: `POST /api/messages` (`TeamsGatewayController`) để phù hợp Azure Bot Framework convention.
-- Gateway ack nhanh và chạy answer pipeline trong background scope, tương tự Slack gateway.
-- `TeamsIdentityResolver` ưu tiên `aadObjectId` + `Teams:UserMappings`, fallback `userPrincipalName`/email, không map được thì anonymous/deny-by-default.
-- `TeamsAdaptiveCardFormatter` trả Adaptive Card có answer, citations và feedback actions.
-- `TeamsResponseClient` dùng Bot Framework REST endpoint. Production cần token/credential flow được cấp qua Azure Bot Service; local test không gọi Azure.
-
-### 5. Verification
-
-- Automated: `TeamsIdentityResolverTests`, `TeamsAdaptiveCardFormatterTests`, `TeamsGatewayControllerTests`.
-- Manual blocked: cần Azure Bot Service + Teams app/ngrok webhook để verify DM, `@mention`, SSO mapping và security-trimmed answer trên Teams client.
