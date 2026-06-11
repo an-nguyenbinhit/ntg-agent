@@ -102,9 +102,14 @@ project-management/
 ### Epic UoB-08 — Web Chat Channel · [[units-channels#UoB-08: Web Chat Channel]]
 | ID | Story | Pri | Pts | Status |
 |---|---|---|---|---|
-| S-0801 | Là User, chat qua web với streaming response. | P2 | | [ ] |
-| S-0802 | Là User, xem conversation history và gửi feedback trên web. | P3 | | [ ] |
-| S-0803 | Là hệ thống, web identity resolver → Authorization Context. | P2 | | [ ] |
+| S-0801 | Là User, chat qua web với streaming response. | P2 | | [x] |
+| S-0802 | Là User, xem conversation history và gửi feedback trên web. | P3 | | [x] |
+| S-0803 | Là hệ thống, web identity resolver → Authorization Context. | P2 | | [x] |
+
+### Epic UoB-09 — MS Teams Channel · [[units-channels#UoB-09: MS Teams Channel]]
+| ID | Story | Pri | Pts | Status |
+|---|---|---|---|---|
+| S-0901 | Là User, chat qua MS Teams với SSO. | P2 | | [/] |
 
 ## Đề xuất thứ tự Sprint (gợi ý)
 
@@ -115,3 +120,4 @@ project-management/
 ## Changelog
 
 - 2026-06-07: Gộp `README.md` (mô tả lớp PM + cấu trúc + quy ước) vào đầu file này; cập nhật link Epic sang dạng `[[units-*#UoB-xx]]` sau khi hợp nhất tài liệu UoB.
+- 2026-06-11: Thêm UoB-09 / S-0901 cho MS Teams Channel; code gateway/resolver/card formatter đang In Progress, manual Azure Bot Service verification chờ hạ tầng.
