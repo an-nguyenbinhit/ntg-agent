@@ -95,6 +95,12 @@
                                         <button class="btn btn-outline-secondary" @onclick="() => ViewDocument(doc)" title="View">
                                             <i class="bi bi-eye"></i>
                                         </button>
+                                        <button class="btn btn-outline-info" @onclick="() => EditDocument(doc)" title="Edit Metadata">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning" @onclick="() => ReindexDocument(doc)" title="Manual Reindex">
+                                            <i class="bi bi-arrow-clockwise"></i>
+                                        </button>
                                         <button class="btn btn-outline-danger" @onclick="() => RemoveDocument(doc)" title="Remove">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -151,6 +157,12 @@
                                 </button>
                                 <button class="btn btn-outline-secondary" @onclick="() => ViewDocument(doc)" title="View">
                                     <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-info" @onclick="() => EditDocument(doc)" title="Edit Metadata">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" @onclick="() => ReindexDocument(doc)" title="Manual Reindex">
+                                    <i class="bi bi-arrow-clockwise"></i>
                                 </button>
                                 <button class="btn btn-outline-danger" @onclick="() => RemoveDocument(doc)" title="Remove">
                                     <i class="bi bi-trash"></i>
@@ -234,6 +246,13 @@
     OnClose="CloseDocumentViewer"
     OnDownload="DownloadDocument" />
 
+<!-- Edit Metadata Modal -->
+<EditDocumentModal 
+    IsVisible="isEditMetadataOpen" 
+    Document="documentToEdit" 
+    OnClose="CloseEditModal" 
+    OnSave="SaveDocumentMetadata" />
+
 @code {
     [Parameter]
     public Guid AgentId { get; set; }
@@ -254,10 +273,12 @@
     private bool isLoading = true;
     private bool isDeleteConfirmationOpen = false;
     private bool isDocumentViewerOpen = false;
+    private bool isEditMetadataOpen = false;
 
     private IList<DocumentListItem> documents = [];
     private DocumentListItem? documentToDelete;
     private DocumentListItem? documentToView;
+    private DocumentListItem? documentToEdit;
 
     private Guid? _previousFolderId;
 
@@ -383,6 +404,50 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error downloading document {DocumentName}", document.Name);
+        }
+    }
+
+    private void EditDocument(DocumentListItem document)
+    {
+        documentToEdit = document;
+        isEditMetadataOpen = true;
+    }
+
+    private void CloseEditModal()
+    {
+        isEditMetadataOpen = false;
+        documentToEdit = null;
+    }
+
+    private async Task SaveDocumentMetadata(DocumentMetadataUpdateRequest request)
+    {
+        if (documentToEdit == null) return;
+
+        try
+        {
+            await DocumentClient.UpdateDocumentMetadataAsync(AgentId, documentToEdit.Id, request);
+            await LoadDocuments(); // Reload to show new metadata
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating document metadata");
+        }
+        finally
+        {
+            CloseEditModal();
+        }
+    }
+
+    private async Task ReindexDocument(DocumentListItem document)
+    {
+        try
+        {
+            await DocumentClient.ReindexDocumentAsync(AgentId, document.Id);
+            Logger.LogInformation("Successfully requested reindex for document {DocumentId}", document.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error reindexing document {DocumentId}", document.Id);
         }
     }
 }

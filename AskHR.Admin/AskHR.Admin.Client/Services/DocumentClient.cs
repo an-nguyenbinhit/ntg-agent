@@ -148,4 +148,17 @@ public class DocumentClient(HttpClient httpClient)
             throw new InvalidOperationException($"Content type '{contentType}' is not suitable for text preview");
         }
     }
+
+    public async Task<DocumentListItem?> UpdateDocumentMetadataAsync(Guid agentId, Guid documentId, DocumentMetadataUpdateRequest request)
+    {
+        var response = await httpClient.PutAsJsonAsync($"api/documents/{agentId}/{documentId}", request);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DocumentListItem>();
+    }
+
+    public async Task ReindexDocumentAsync(Guid agentId, Guid documentId)
+    {
+        var response = await httpClient.PostAsync($"api/documents/{agentId}/{documentId}/reindex", null);
+        response.EnsureSuccessStatusCode();
+    }
 }

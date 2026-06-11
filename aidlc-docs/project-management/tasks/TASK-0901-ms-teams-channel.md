@@ -2,7 +2,7 @@
 type: task
 task: "TASK-0901"
 story: "S-0901"
-status: in-progress
+status: blocked
 owner: Eng
 tags: [scrum, task, teams, bot-framework, rbac]
 related: ["[[units-channels#UoB-09: MS Teams Channel]]", "[[sprint-06]]"]
@@ -31,3 +31,7 @@ updated: 2026-06-11
 - Unit tests cover identity fallback, card mapping, mention normalization, duplicate activity handling, and background pipeline invocation.
 - Manual Teams client verification is blocked until Azure Bot Service and Teams app registration are available.
 
+## Status
+
+- Code path is implemented and covered by local unit tests.
+- Remaining work is operational verification against Azure Bot Service and a registered Teams app; no additional application code is planned before that environment exists.
