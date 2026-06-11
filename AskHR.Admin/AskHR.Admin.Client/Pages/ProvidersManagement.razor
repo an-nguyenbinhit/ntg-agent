@@ -1,0 +1,298 @@
+@page "/providers"
+@using AskHR.Common.Dtos.Providers
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject ProvidersClient ProvidersClient
+@inject ILogger<ProvidersManagement> Logger
+
+<PageTitle>Provider Routing</PageTitle>
+
+<div class="container-fluid px-2 px-md-4 py-2 py-md-3">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="bi bi-diagram-3 me-2"></i>Provider Routing
+            </h2>
+            <button class="btn btn-outline-secondary" @onclick="LoadData" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card border-0 bg-primary bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-primary mb-1">@providers.Count</div>
+                        <small class="text-muted">Providers</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 bg-success bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-success mb-1">@providers.Count(IsHealthyProvider)</div>
+                        <small class="text-muted">Healthy</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 bg-info bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-info mb-1">@routes.Count(r => r.Enabled)</div>
+                        <small class="text-muted">Enabled Routes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 bg-danger bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-danger mb-1">@routeVerifications.Count(v => v.Level == VerificationLevel.Error)</div>
+                        <small class="text-muted">Route Errors</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Provider Metadata</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Provider</th>
+                                <th>Approval</th>
+                                <th>Health</th>
+                                <th>Data Residency</th>
+                                <th>Capabilities</th>
+                                <th>Secret Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (providers.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">No provider metadata found</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var provider in providers)
+                                {
+                                    <tr>
+                                        <td><strong>@provider.Provider</strong></td>
+                                        <td><span class="badge @GetApprovalBadgeClass(provider.ApprovalStatus)">@Display(provider.ApprovalStatus)</span></td>
+                                        <td><span class="badge @GetHealthBadgeClass(provider.HealthStatus)">@Display(provider.HealthStatus)</span></td>
+                                        <td>@Display(provider.DataResidency)</td>
+                                        <td>
+                                            @foreach (var capability in provider.Capabilities)
+                                            {
+                                                <span class="badge bg-secondary me-1">@capability</span>
+                                            }
+                                        </td>
+                                        <td><code>@Display(provider.SecretReference)</code></td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Route Verification</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Feature</th>
+                                <th>Primary Route</th>
+                                <th>Fallbacks</th>
+                                <th>Policy</th>
+                                <th>Status</th>
+                                <th>Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (routeVerifications.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">No model routes found</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var verification in routeVerifications)
+                                {
+                                    <tr>
+                                        <td><strong>@verification.Route.Feature</strong></td>
+                                        <td>
+                                            <span>@verification.Route.PrimaryProvider</span>
+                                            <span class="text-muted">/</span>
+                                            <code>@verification.Route.PrimaryModel</code>
+                                        </td>
+                                        <td>
+                                            @if (verification.Route.Fallbacks.Count == 0)
+                                            {
+                                                <span class="text-muted">None</span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var fallback in verification.Route.Fallbacks)
+                                                {
+                                                    <span class="badge bg-light text-dark border me-1">@fallback.Provider / @fallback.Model</span>
+                                                }
+                                            }
+                                        </td>
+                                        <td>@Display(verification.Route.DataPolicy)</td>
+                                        <td>
+                                            <span class="badge @(verification.Route.Enabled ? "bg-success" : "bg-secondary")">
+                                                @(verification.Route.Enabled ? "Enabled" : "Disabled")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge @GetVerificationBadgeClass(verification.Level)">@verification.Level</span>
+                                            <div class="small text-muted mt-1">@verification.Message</div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private List<ProviderMetadataDto> providers = [];
+    private List<ModelRouteDto> routes = [];
+    private List<RouteVerification> routeVerifications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+
+            providers = await ProvidersClient.GetProviderMetadataAsync() ?? [];
+            routes = await ProvidersClient.GetModelRoutesAsync() ?? [];
+            routeVerifications = routes.Select(VerifyRoute).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Error loading provider routing data");
+            errorMessage = "Failed to load provider routing data.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private RouteVerification VerifyRoute(ModelRouteDto route)
+    {
+        if (!route.Enabled)
+            return new(route, VerificationLevel.Warning, "Route is disabled and will not receive traffic.");
+
+        var provider = providers.FirstOrDefault(p =>
+            string.Equals(p.Provider, route.PrimaryProvider, StringComparison.OrdinalIgnoreCase));
+
+        if (provider is null)
+            return new(route, VerificationLevel.Error, "Primary provider is not registered in ProviderMetadata.");
+
+        if (!IsApprovedProvider(provider))
+            return new(route, VerificationLevel.Error, "Primary provider is not production approved.");
+
+        if (!IsHealthyProvider(provider))
+            return new(route, VerificationLevel.Warning, "Primary provider is not marked Healthy.");
+
+        var missingCapabilities = route.RequiredCapabilities
+            .Where(required => !provider.Capabilities.Any(capability =>
+                string.Equals(capability, required, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (missingCapabilities.Count > 0)
+            return new(route, VerificationLevel.Error, $"Missing capabilities: {string.Join(", ", missingCapabilities)}.");
+
+        return new(route, VerificationLevel.Ok, "Route matches registered provider metadata.");
+    }
+
+    private static bool IsApprovedProvider(ProviderMetadataDto provider)
+        => string.Equals(provider.ApprovalStatus, "ProductionApproved", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider.ApprovalStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHealthyProvider(ProviderMetadataDto provider)
+        => string.Equals(provider.HealthStatus, "Healthy", StringComparison.OrdinalIgnoreCase);
+
+    private static string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string GetApprovalBadgeClass(string? status) => status switch
+    {
+        "ProductionApproved" or "Approved" => "bg-success",
+        "Pending" => "bg-warning text-dark",
+        "Rejected" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string GetHealthBadgeClass(string? status) => status switch
+    {
+        "Healthy" => "bg-success",
+        "Degraded" => "bg-warning text-dark",
+        "Unhealthy" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string GetVerificationBadgeClass(VerificationLevel level) => level switch
+    {
+        VerificationLevel.Ok => "bg-success",
+        VerificationLevel.Warning => "bg-warning text-dark",
+        VerificationLevel.Error => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private sealed record RouteVerification(ModelRouteDto Route, VerificationLevel Level, string Message);
+
+    private enum VerificationLevel
+    {
+        Ok,
+        Warning,
+        Error
+    }
+}

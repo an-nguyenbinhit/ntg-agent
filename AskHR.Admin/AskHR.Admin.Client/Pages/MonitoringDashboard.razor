@@ -1,0 +1,244 @@
+@page "/monitoring"
+@using AskHR.Common.Dtos.Audit
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject MonitoringClient MonitoringClient
+@inject ILogger<MonitoringDashboard> Logger
+
+<PageTitle>Ops Monitoring</PageTitle>
+
+<div class="container-fluid px-2 px-md-4 py-2 py-md-3">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="bi bi-speedometer2 me-2"></i>Ops Monitoring
+            </h2>
+            <button class="btn btn-outline-secondary" @onclick="LoadSummary" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" @bind="fromDate" />
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" @bind="toDate" />
+                </div>
+                <div class="col-12 col-md-4">
+                    <button class="btn btn-primary w-100" @onclick="ApplyFilters" disabled="@isLoading">
+                        <i class="bi bi-funnel me-2"></i>Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (summary is not null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card border-0 bg-primary bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-primary mb-1">@summary.TotalEvents.ToString("N0")</div>
+                        <small class="text-muted">Audit Events</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card border-0 bg-success bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-success mb-1">@summary.TotalTokens.ToString("N0")</div>
+                        <small class="text-muted">Total Tokens</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card border-0 bg-info bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-info mb-1">@summary.TotalPromptTokens.ToString("N0")</div>
+                        <small class="text-muted">Prompt Tokens</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="card border-0 bg-warning bg-opacity-10 h-100">
+                    <div class="card-body py-3">
+                        <div class="h5 text-warning mb-1">@summary.AverageLatencyMs.ToString("N0") ms</div>
+                        <small class="text-muted">Average Latency</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-12 col-xl-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Top Models by Tokens</h5>
+                    </div>
+                    <div class="card-body">
+                        @RenderMetricTable(summary.TokensByModel, "Model", "Tokens")
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Average Latency by Model</h5>
+                    </div>
+                    <div class="card-body">
+                        @RenderMetricTable(summary.AverageLatencyByModel, "Model", "Latency ms")
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Events by Channel</h5>
+                    </div>
+                    <div class="card-body">
+                        @RenderMetricTable(summary.EventsByChannel, "Channel", "Events")
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Events by Type</h5>
+                    </div>
+                    <div class="card-body">
+                        @RenderMetricTable(summary.EventsByType, "Event Type", "Events")
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private DateTime? fromDate = DateTime.UtcNow.AddDays(-30);
+    private DateTime? toDate = DateTime.UtcNow;
+    private AuditMonitoringDto? summary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSummary();
+    }
+
+    private async Task LoadSummary()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+
+            summary = await MonitoringClient.GetAuditSummaryAsync(
+                ToDateTimeOffset(fromDate),
+                ToDateTimeOffset(toDate?.Date.AddDays(1).AddTicks(-1)));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Error loading audit monitoring summary");
+            errorMessage = "Failed to load monitoring summary.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadSummary();
+    }
+
+    private static DateTimeOffset? ToDateTimeOffset(DateTime? date)
+        => date.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(date.Value, DateTimeKind.Local)).ToUniversalTime() : null;
+
+    private static RenderFragment RenderMetricTable<TValue>(
+        IReadOnlyDictionary<string, TValue> metrics,
+        string nameHeader,
+        string valueHeader) => builder =>
+        {
+            var sequence = 0;
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "table-responsive");
+            builder.OpenElement(sequence++, "table");
+            builder.AddAttribute(sequence++, "class", "table table-sm table-hover align-middle mb-0");
+            builder.OpenElement(sequence++, "thead");
+            builder.OpenElement(sequence++, "tr");
+            builder.OpenElement(sequence++, "th");
+            builder.AddContent(sequence++, nameHeader);
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "th");
+            builder.AddAttribute(sequence++, "class", "text-end");
+            builder.AddContent(sequence++, valueHeader);
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "tbody");
+
+            if (metrics.Count == 0)
+            {
+                builder.OpenElement(sequence++, "tr");
+                builder.OpenElement(sequence++, "td");
+                builder.AddAttribute(sequence++, "colspan", "2");
+                builder.AddAttribute(sequence++, "class", "text-center text-muted");
+                builder.AddContent(sequence++, "No data");
+                builder.CloseElement();
+                builder.CloseElement();
+            }
+            else
+            {
+                foreach (var metric in metrics)
+                {
+                    builder.OpenElement(sequence++, "tr");
+                    builder.OpenElement(sequence++, "td");
+                    builder.AddContent(sequence++, metric.Key);
+                    builder.CloseElement();
+                    builder.OpenElement(sequence++, "td");
+                    builder.AddAttribute(sequence++, "class", "text-end");
+                    builder.AddContent(sequence++, FormatMetric(metric.Value));
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+        };
+
+    private static string FormatMetric<TValue>(TValue value) => value switch
+    {
+        double d => d.ToString("N0"),
+        long l => l.ToString("N0"),
+        int i => i.ToString("N0"),
+        _ => value?.ToString() ?? string.Empty
+    };
+}

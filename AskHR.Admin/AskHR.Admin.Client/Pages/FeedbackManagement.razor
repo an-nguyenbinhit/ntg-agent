@@ -1,0 +1,343 @@
+@page "/feedback"
+@using AskHR.Common.Dtos.Audit
+@using AskHR.Common.Dtos.TokenUsage
+@attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject FeedbackClient FeedbackClient
+@inject ILogger<FeedbackManagement> Logger
+
+<PageTitle>Feedback Management</PageTitle>
+
+<div class="container-fluid px-2 px-md-4 py-2 py-md-3">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="bi bi-chat-square-heart me-2"></i>Feedback Management
+            </h2>
+            <button class="btn btn-outline-secondary" @onclick="LoadEvents" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success" role="alert">@successMessage</div>
+    }
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3 col-xl-2">
+            <div class="card border-0 bg-danger bg-opacity-10 h-100">
+                <div class="card-body py-3">
+                    <div class="h5 text-danger mb-1">@GetCount(countBySeverity, "P1")</div>
+                    <small class="text-muted">P1 Feedback</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <div class="card border-0 bg-warning bg-opacity-10 h-100">
+                <div class="card-body py-3">
+                    <div class="h5 text-warning mb-1">@GetCount(countBySeverity, "P2")</div>
+                    <small class="text-muted">P2 Feedback</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <div class="card border-0 bg-info bg-opacity-10 h-100">
+                <div class="card-body py-3">
+                    <div class="h5 text-info mb-1">@GetCount(countBySeverity, "P3")</div>
+                    <small class="text-muted">P3 Feedback</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <div class="card border-0 bg-secondary bg-opacity-10 h-100">
+                <div class="card-body py-3">
+                    <div class="h5 text-secondary mb-1">@GetCount(countByStatus, "Open")</div>
+                    <small class="text-muted">Open</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Severity</label>
+                    <select class="form-select" @bind="severityFilter">
+                        <option value="">All</option>
+                        <option value="P1">P1</option>
+                        <option value="P2">P2</option>
+                        <option value="P3">P3</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" @bind="statusFilter">
+                        <option value="">All</option>
+                        <option value="Open">Open</option>
+                        <option value="Triaged">Triaged</option>
+                        <option value="Resolved">Resolved</option>
+                        <option value="Ignored">Ignored</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Rating</label>
+                    <select class="form-select" @bind="ratingFilter">
+                        <option value="">All</option>
+                        <option value="Positive">Positive</option>
+                        <option value="Negative">Negative</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <button class="btn btn-primary w-100" @onclick="ApplyFilters" disabled="@isLoading">
+                        <i class="bi bi-funnel me-2"></i>Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Feedback Events</h5>
+                <span class="badge bg-secondary">@events?.TotalCount.ToString("N0") records</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Created</th>
+                                <th>Rating</th>
+                                <th>Topic</th>
+                                <th>Comment</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (rows.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">No feedback events found</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var row in rows)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div>@row.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy")</div>
+                                            <small class="text-muted">@row.CreatedAt.ToLocalTime().ToString("HH:mm")</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge @GetRatingBadgeClass(row.Rating)">@row.Rating</span>
+                                        </td>
+                                        <td>@(string.IsNullOrWhiteSpace(row.Topic) ? "Unspecified" : row.Topic)</td>
+                                        <td class="text-break" style="min-width: 18rem;">
+                                            @(string.IsNullOrWhiteSpace(row.CommentMasked) ? "-" : row.CommentMasked)
+                                        </td>
+                                        <td style="min-width: 8rem;">
+                                            <select class="form-select form-select-sm" @bind="row.SeverityCandidate">
+                                                <option value="">Unclassified</option>
+                                                <option value="P1">P1</option>
+                                                <option value="P2">P2</option>
+                                                <option value="P3">P3</option>
+                                            </select>
+                                        </td>
+                                        <td style="min-width: 9rem;">
+                                            <select class="form-select form-select-sm" @bind="row.Status">
+                                                <option value="Open">Open</option>
+                                                <option value="Triaged">Triaged</option>
+                                                <option value="Resolved">Resolved</option>
+                                                <option value="Ignored">Ignored</option>
+                                            </select>
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => SaveRow(row)" disabled="@row.IsSaving">
+                                                <i class="bi bi-save me-1"></i>Save
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (events?.TotalPages > 1)
+                {
+                    <nav aria-label="Feedback event pages" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item @(currentPage == 1 ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(currentPage - 1)">Previous</button>
+                            </li>
+                            @for (var i = 1; i <= events.TotalPages; i++)
+                            {
+                                var pageNumber = i;
+                                <li class="page-item @(currentPage == pageNumber ? "active" : "")">
+                                    <button class="page-link" @onclick="() => ChangePage(pageNumber)">@pageNumber</button>
+                                </li>
+                            }
+                            <li class="page-item @(currentPage == events.TotalPages ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(currentPage + 1)">Next</button>
+                            </li>
+                        </ul>
+                    </nav>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? successMessage;
+    private string? severityFilter;
+    private string? statusFilter;
+    private string? ratingFilter;
+    private int currentPage = 1;
+    private const int PageSize = 25;
+    private PagedResult<FeedbackEventAdminDto>? events;
+    private Dictionary<string, int> countBySeverity = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, int> countByStatus = new(StringComparer.OrdinalIgnoreCase);
+    private List<FeedbackEventRow> rows = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEvents();
+    }
+
+    private async Task LoadEvents()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            successMessage = null;
+
+            var result = await FeedbackClient.GetEventsAsync(
+                severityFilter,
+                statusFilter,
+                ratingFilter,
+                page: currentPage,
+                pageSize: PageSize);
+
+            events = result?.Events;
+            countBySeverity = result?.CountBySeverity ?? new(StringComparer.OrdinalIgnoreCase);
+            countByStatus = result?.CountByStatus ?? new(StringComparer.OrdinalIgnoreCase);
+            rows = events?.Items.Select(FeedbackEventRow.FromDto).ToList() ?? [];
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Error loading feedback events");
+            errorMessage = "Failed to load feedback events.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        currentPage = 1;
+        await LoadEvents();
+    }
+
+    private async Task ChangePage(int page)
+    {
+        if (page < 1 || (events is not null && page > events.TotalPages))
+            return;
+
+        currentPage = page;
+        await LoadEvents();
+    }
+
+    private async Task SaveRow(FeedbackEventRow row)
+    {
+        try
+        {
+            row.IsSaving = true;
+            errorMessage = null;
+            successMessage = null;
+
+            await FeedbackClient.UpdateEventAsync(
+                row.Id,
+                new FeedbackEventUpdateDto(row.SeverityCandidate, row.Status));
+
+            successMessage = "Feedback event updated.";
+            await LoadEvents();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Error updating feedback event {FeedbackEventId}", row.Id);
+            errorMessage = "Failed to update feedback event.";
+        }
+        finally
+        {
+            row.IsSaving = false;
+        }
+    }
+
+    private static int GetCount(Dictionary<string, int> counts, string key)
+        => counts.TryGetValue(key, out var count) ? count : 0;
+
+    private static string GetRatingBadgeClass(string rating) => rating switch
+    {
+        "Positive" => "bg-success",
+        "Negative" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private sealed class FeedbackEventRow
+    {
+        public Guid Id { get; set; }
+        public string Rating { get; set; } = string.Empty;
+        public string? CommentMasked { get; set; }
+        public string? Topic { get; set; }
+        public string? SeverityCandidate { get; set; }
+        public string Status { get; set; } = "Open";
+        public DateTimeOffset CreatedAt { get; set; }
+        public bool IsSaving { get; set; }
+
+        public static FeedbackEventRow FromDto(FeedbackEventAdminDto dto) => new()
+        {
+            Id = dto.Id,
+            Rating = dto.Rating,
+            CommentMasked = dto.CommentMasked,
+            Topic = dto.Topic,
+            SeverityCandidate = dto.SeverityCandidate,
+            Status = dto.Status,
+            CreatedAt = dto.CreatedAt
+        };
+    }
+}

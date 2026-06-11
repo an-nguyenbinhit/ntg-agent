@@ -34,6 +34,21 @@ builder.Services.AddHttpClient<TokenUsageClient>(client =>
     client.BaseAddress = baseUri;
 });
 
+builder.Services.AddHttpClient<MonitoringClient>(client =>
+{
+    client.BaseAddress = baseUri;
+});
+
+builder.Services.AddHttpClient<FeedbackClient>(client =>
+{
+    client.BaseAddress = baseUri;
+});
+
+builder.Services.AddHttpClient<ProvidersClient>(client =>
+{
+    client.BaseAddress = baseUri;
+});
+
 builder.Services.AddHttpClient<KnowledgeClient>(client =>
 {
     client.BaseAddress = baseUri;

@@ -84,20 +84,20 @@ project-management/
 |---|---|---|---|---|
 | S-0501 | Là HR Admin, quản lý tài liệu/mapping qua control plane. | P2 | | [ ] |
 | S-0502 | Là HR Admin, cấu hình persona/tone và provider config. | P2 | | [ ] |
-| S-0503 | Là HR Admin, xem token usage & monitoring. | P3 | | [ ] |
+| S-0503 | Là HR Admin, xem token usage & monitoring. | P3 | | [x] |
 
 ### Epic UoB-06 — Feedback, Audit & Analytics · [[units-governance-ops#UoB-06: Feedback, Audit & Analytics]]
 | ID | Story | Pri | Pts | Status |
 |---|---|---|---|---|
-| S-0601 | Là hệ thống, ghi audit trail mỗi câu trả lời (masked question + hash). | P1 | | [ ] |
-| S-0602 | Là User, gửi feedback (👍/👎) trên câu trả lời. | P2 | | [ ] |
-| S-0603 | Là HR, phân loại severity P1/P2/P3 và routing escalation. | P2 | | [ ] |
+| S-0601 | Là hệ thống, ghi audit trail mỗi câu trả lời (masked question + hash). | P1 | | [x] |
+| S-0602 | Là User, gửi feedback (👍/👎) trên câu trả lời. | P2 | | [x] |
+| S-0603 | Là HR, phân loại severity P1/P2/P3 và routing escalation. | P2 | | [x] |
 
 ### Epic UoB-07 — Multi-Provider Config · [[units-governance-ops#UoB-07: Multi-Provider / Model Configuration]]
 | ID | Story | Pri | Pts | Status |
 |---|---|---|---|---|
-| S-0701 | Là dev, abstraction layer cho GitHub Models/OpenAI/Azure OpenAI/Gemini/Anthropic. | P1 | | [ ] |
-| S-0702 | Là HR Admin, chọn provider/model per skill mà không sửa code. | P2 | | [ ] |
+| S-0701 | Là dev, abstraction layer cho GitHub Models/OpenAI/Azure OpenAI/Gemini/Anthropic. | P1 | | [x] |
+| S-0702 | Là HR Admin, chọn provider/model per skill mà không sửa code. | P2 | | [x] |
 
 ### Epic UoB-08 — Web Chat Channel · [[units-channels#UoB-08: Web Chat Channel]]
 | ID | Story | Pri | Pts | Status |
@@ -121,3 +121,4 @@ project-management/
 
 - 2026-06-07: Gộp `README.md` (mô tả lớp PM + cấu trúc + quy ước) vào đầu file này; cập nhật link Epic sang dạng `[[units-*#UoB-xx]]` sau khi hợp nhất tài liệu UoB.
 - 2026-06-11: Thêm UoB-09 / S-0901 cho MS Teams Channel; code gateway/resolver/card formatter đang In Progress, manual Azure Bot Service verification chờ hạ tầng.
+- 2026-06-11: Sprint 08 Admin Portal implementation completed for S-0503, S-0602/S-0603, and S-0702; added monitoring, feedback, and provider-routing screens.
