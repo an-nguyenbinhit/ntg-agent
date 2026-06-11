@@ -22,6 +22,8 @@ public sealed record AuthorizationContext
 
     public string? SensitivityLevel { get; init; }
 
+    public string ApprovalStatus { get; init; } = "Approved";
+
     public static AuthorizationContext Anonymous(IEnumerable<string>? allowedTags = null)
     {
         var tags = (allowedTags ?? [])
@@ -36,7 +38,8 @@ public sealed record AuthorizationContext
             IsAnonymous = true,
             Roles = ["anonymous"],
             AllowedTags = tags,
-            SensitivityLevel = "Public"
+            SensitivityLevel = "Public",
+            ApprovalStatus = "Approved"
         };
     }
 }

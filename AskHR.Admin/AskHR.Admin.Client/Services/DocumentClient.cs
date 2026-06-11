@@ -161,4 +161,11 @@ public class DocumentClient(HttpClient httpClient)
         var response = await httpClient.PostAsync($"api/documents/{agentId}/{documentId}/reindex", null);
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task UpdateDocumentApprovalStatusAsync(Guid agentId, Guid documentId, ApprovalStatus approvalStatus, DateTime? nextReviewDate = null)
+    {
+        var request = new DocumentApprovalUpdateRequest(approvalStatus, nextReviewDate);
+        var response = await httpClient.PutAsJsonAsync($"api/documents/{agentId}/{documentId}/approval", request);
+        response.EnsureSuccessStatusCode();
+    }
 }

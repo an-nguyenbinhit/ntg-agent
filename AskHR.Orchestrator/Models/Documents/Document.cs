@@ -28,6 +28,10 @@ public class Document
     public IngestStatus IngestStatus { get; set; } = IngestStatus.Pending;
     public string? IngestErrorMessage { get; set; }
 
+    public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.Approved; // Default to Approved for backward compatibility
+    public DateTime? NextReviewDate { get; set; }
+    public Guid? ApprovedByUserId { get; set; }
+
     // Navigation properties
     public ICollection<DocumentTag> DocumentTags { get; set; } = new List<DocumentTag>();
 }

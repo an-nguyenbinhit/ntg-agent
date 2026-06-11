@@ -579,6 +579,7 @@ public class KernelMemoryKnowledgeTests
         Assert.That(HasTag(filters[0], "sensitivity", "public"), Is.True);
         Assert.That(HasTag(filters[0], "sensitivity", "internal"), Is.True);
         Assert.That(HasTag(filters[0], "sensitivity", "__any__"), Is.True);
+        Assert.That(HasTag(filters[0], "approvalStatus", "approved"), Is.True);
     }
 
     [Test]
@@ -594,6 +595,7 @@ public class KernelMemoryKnowledgeTests
         Assert.That(HasTag(filters[0], "tags", "legacy-public-tag"), Is.True);
         Assert.That(HasTag(filters[0], "sensitivity", "public"), Is.True);
         Assert.That(HasTag(filters[0], "sensitivity", "__any__"), Is.True);
+        Assert.That(HasTag(filters[0], "approvalStatus", "approved"), Is.True);
         Assert.That(HasTagName(filters[0], "allowedRoles"), Is.False);
     }
 
@@ -682,6 +684,30 @@ public class KernelMemoryKnowledgeTests
             new DocumentPermissionMetadata { AllowedTags = ["10dd4508-4e35-4c63-bd74-5d90246c7770"] });
 
         Assert.That(HasTag(documentTags, "tags", "public-all"), Is.True);
+    }
+
+    [Test]
+    public void ComposeFilters_WhenDocumentIsPending_DoesNotMatchApprovedAuthorization()
+    {
+        var documentTags = KernelMemoryKnowledge.ComposeTags(
+            _testAgentId,
+            new DocumentPermissionMetadata
+            {
+                AllowedTags = ["hr-policy"],
+                ApprovalStatus = ApprovalStatus.Pending.ToString()
+            });
+
+        var filters = KernelMemoryKnowledge.ComposeFilters(
+            _testAgentId,
+            new AuthorizationContext
+            {
+                AllowedTags = ["hr-policy"],
+                Roles = ["Manager"],
+                SensitivityLevel = "Internal"
+            });
+
+        Assert.That(filters, Has.Count.EqualTo(1));
+        Assert.That(Matches(documentTags, filters[0]), Is.False);
     }
 
     private static bool HasTag(MemoryFilter filter, string name, string value)

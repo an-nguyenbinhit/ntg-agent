@@ -36,6 +36,11 @@
                         <input type="text" class="form-control" @bind="businessUnitsInput" placeholder="e.g. Vietnam, Global (comma separated)" />
                         <div class="form-text">Comma-separated list of business units allowed to access this document.</div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tags</label>
+                        <input type="text" class="form-control" @bind="tagsInput" placeholder="e.g. policy, onboarding, tax (comma separated)" />
+                        <div class="form-text">Comma-separated list of tags for searching and filtering.</div>
+                    </div>
                 }
             </div>
             <div class="modal-footer">
@@ -73,6 +78,7 @@
     private string sensitivityLevel = "Internal";
     private string rolesInput = string.Empty;
     private string businessUnitsInput = string.Empty;
+    private string tagsInput = string.Empty;
     private bool isSaving = false;
 
     protected override void OnParametersSet()
@@ -82,6 +88,7 @@
             sensitivityLevel = string.IsNullOrWhiteSpace(Document.SensitivityLevel) ? "Internal" : Document.SensitivityLevel;
             rolesInput = string.Join(", ", Document.Roles ?? new List<string>());
             businessUnitsInput = string.Join(", ", Document.BusinessUnits ?? new List<string>());
+            tagsInput = string.Join(", ", Document.Tags ?? new List<string>());
         }
     }
 
@@ -103,7 +110,11 @@
                 ? new List<string>() 
                 : businessUnitsInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
 
-            var request = new DocumentMetadataUpdateRequest(roles, businessUnits, sensitivityLevel);
+            var tags = string.IsNullOrWhiteSpace(tagsInput)
+                ? new List<string>()
+                : tagsInput.Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList();
+
+            var request = new DocumentMetadataUpdateRequest(roles, businessUnits, sensitivityLevel, tags);
 
             await OnSave.InvokeAsync(request);
         }

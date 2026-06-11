@@ -245,8 +245,57 @@ public class DocumentsControllerTests
         Assert.That(savedDocument.Name, Is.EqualTo("policy.md"));
         Assert.That(savedDocument.AgentId, Is.EqualTo(_testAgentId));
         Assert.That(savedDocument.KnowledgeDocId, Is.EqualTo("knowledge-doc-id"));
+        Assert.That(savedDocument.IngestStatus, Is.EqualTo(IngestStatus.Success));
+        Assert.That(savedDocument.ApprovalStatus, Is.EqualTo(ApprovalStatus.Pending));
         var documentTags = await _context.DocumentTags.Where(dt => dt.DocumentId == savedDocument.Id).ToListAsync();
         Assert.That(documentTags, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public async Task UploadDocuments_WhenExistingReindexFails_PreservesPreviousHashAndMetadata()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "policy.md",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Hash = "old-hash",
+            Roles = ["HR"],
+            BusinessUnits = ["VN"],
+            SensitivityLevel = "Internal",
+            ApprovalStatus = ApprovalStatus.Approved,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        var files = new FormFileCollection
+        {
+            CreateTestFile("policy.md", "new content")
+        };
+        _mockKnowledgeService
+            .Setup(x => x.ImportDocumentAsync(It.IsAny<Stream>(), "policy.md", _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("new-knowledge-doc-id");
+        _mockKnowledgeService
+            .Setup(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("delete failed"));
+
+        // Act
+        var result = await _controller.UploadDocuments(_testAgentId, files, null, [Guid.NewGuid().ToString()]);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.Hash, Is.EqualTo("old-hash"));
+        Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("old-knowledge-doc-id"));
+        Assert.That(updatedDocument.Roles, Is.EquivalentTo(new[] { "HR" }));
+        Assert.That(updatedDocument.BusinessUnits, Is.EquivalentTo(new[] { "VN" }));
+        Assert.That(updatedDocument.SensitivityLevel, Is.EqualTo("Internal"));
+        Assert.That(updatedDocument.ApprovalStatus, Is.EqualTo(ApprovalStatus.Approved));
+        Assert.That(updatedDocument.IngestStatus, Is.EqualTo(IngestStatus.Failed));
+        Assert.That(await _context.DocumentTags.CountAsync(dt => dt.DocumentId == document.Id), Is.EqualTo(0));
     }
 
     [Test]
@@ -353,6 +402,30 @@ public class DocumentsControllerTests
         Assert.That(deletedDocument, Is.Null);
         _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Test]
+    public async Task DeleteDocument_WhenAgentDoesNotMatch_ReturnsNotFound()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Document",
+            AgentId = Guid.NewGuid(),
+            KnowledgeDocId = null
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.DeleteDocument(document.Id, _testAgentId);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundResult>());
+        var existingDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(existingDocument, Is.Not.Null);
+    }
+
     [Test]
     public async Task UpdateDocumentMetadata_WhenDocumentNotFound_ReturnsNotFound()
     {
@@ -496,6 +569,85 @@ public class DocumentsControllerTests
         var updatedDocument = await _context.Documents.FindAsync(document.Id);
         Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Failed));
     }
+
+    [Test]
+    public async Task UpdateDocumentApprovalStatus_WhenApproved_ReindexesAndSavesApproval()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Success,
+            ApprovalStatus = ApprovalStatus.Pending
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.Is<DocumentPermissionMetadata>(p => p.ApprovalStatus == ApprovalStatus.Approved.ToString()), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("new-knowledge-doc-id");
+
+        // Act
+        var result = await _controller.UpdateDocumentApprovalStatus(
+            _testAgentId,
+            document.Id,
+            new DocumentApprovalUpdateRequest(ApprovalStatus.Approved),
+            CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.ApprovalStatus, Is.EqualTo(ApprovalStatus.Approved));
+        Assert.That(updatedDocument.ApprovedByUserId, Is.EqualTo(_testUserId));
+        Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("new-knowledge-doc-id"));
+        _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task UpdateDocumentApprovalStatus_WhenOldKnowledgeRemovalFails_RollsBackApprovalAndKnowledgeDocId()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Success,
+            ApprovalStatus = ApprovalStatus.Pending
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        _mockKnowledgeService
+            .Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.Is<DocumentPermissionMetadata>(p => p.ApprovalStatus == ApprovalStatus.Approved.ToString()), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("new-knowledge-doc-id");
+        _mockKnowledgeService
+            .Setup(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("delete failed"));
+
+        // Act
+        var result = await _controller.UpdateDocumentApprovalStatus(
+            _testAgentId,
+            document.Id,
+            new DocumentApprovalUpdateRequest(ApprovalStatus.Approved),
+            CancellationToken.None);
+
+        // Assert
+        var objectResult = result as ObjectResult;
+        Assert.That(objectResult, Is.Not.Null);
+        Assert.That(objectResult.StatusCode, Is.EqualTo(StatusCodes.Status502BadGateway));
+        var updatedDocument = await _context.Documents.FindAsync(document.Id);
+        Assert.That(updatedDocument!.ApprovalStatus, Is.EqualTo(ApprovalStatus.Pending));
+        Assert.That(updatedDocument.ApprovedByUserId, Is.Null);
+        Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("old-knowledge-doc-id"));
+        Assert.That(updatedDocument.IngestStatus, Is.EqualTo(IngestStatus.Failed));
+    }
+
     [Test]
     public async Task ImportWebPage_WhenUrlIsEmpty_ReturnsBadRequest()
     {
@@ -542,6 +694,8 @@ public class DocumentsControllerTests
         Assert.That(savedDocument.Url, Is.EqualTo(url));
         Assert.That(savedDocument.Type, Is.EqualTo(DocumentType.WebPage));
         Assert.That(savedDocument.FolderId, Is.EqualTo(folderId));
+        Assert.That(savedDocument.IngestStatus, Is.EqualTo(IngestStatus.Success));
+        Assert.That(savedDocument.ApprovalStatus, Is.EqualTo(ApprovalStatus.Pending));
     }
     [Test]
     public async Task ImportWebPage_WhenKnowledgeServiceThrows_ReturnsBadRequest()
@@ -603,6 +757,8 @@ public class DocumentsControllerTests
         Assert.That(savedDocument.Type, Is.EqualTo(DocumentType.Text));
         Assert.That(savedDocument.FolderId, Is.EqualTo(folderId));
         Assert.That(savedDocument.KnowledgeDocId, Is.EqualTo("knowledge-doc-id"));
+        Assert.That(savedDocument.IngestStatus, Is.EqualTo(IngestStatus.Success));
+        Assert.That(savedDocument.ApprovalStatus, Is.EqualTo(ApprovalStatus.Pending));
     }
     [Test]
     public async Task UploadTextContent_WhenNoTitle_UsesDefaultTitle()

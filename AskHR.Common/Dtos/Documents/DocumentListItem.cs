@@ -12,7 +12,9 @@ public record DocumentListItem (
     List<string> BusinessUnits,
     string? SensitivityLevel,
     IngestStatus IngestStatus,
-    string? IngestErrorMessage)
+    string? IngestErrorMessage,
+    ApprovalStatus ApprovalStatus,
+    DateTime? NextReviewDate)
 {
     public string FormattedCreatedAt => CreatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     public string FormattedUpdatedAt => UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);

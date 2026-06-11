@@ -566,6 +566,14 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("BusinessUnits")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -596,6 +604,9 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("NextReviewDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Roles")
                         .IsRequired()

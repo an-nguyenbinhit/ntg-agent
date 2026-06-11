@@ -306,6 +306,10 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             e.Property(x => x.IngestStatus)
                 .HasConversion<string>()
                 .HasMaxLength(32);
+
+            e.Property(x => x.ApprovalStatus)
+                .HasConversion<string>()
+                .HasMaxLength(32);
         });
 
         modelBuilder.Entity<Models.Agents.Agent>(e =>

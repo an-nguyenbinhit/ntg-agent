@@ -16,6 +16,8 @@ public sealed record DocumentPermissionMetadata
 
     public string? SensitivityLevel { get; init; }
 
+    public string? ApprovalStatus { get; init; }
+
     public static DocumentPermissionMetadata FromTags(IEnumerable<string>? tags)
     {
         return new DocumentPermissionMetadata

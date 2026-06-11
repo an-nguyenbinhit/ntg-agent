@@ -18,6 +18,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
     private const string TagNameLegalEntities = "legalEntities";
     private const string TagNameApplicableTo = "applicableTo";
     private const string TagNameSensitivity = "sensitivity";
+    private const string TagNameApprovalStatus = "approvalStatus";
     private const string TagNameDocumentName = "documentName";
     private const string TagNameSourcePath = "sourcePath";
     private const string TagNameSourceType = "sourceType";
@@ -154,6 +155,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         // Relevance metadata for future level-aware retrieval; not an access axis yet.
         AddTags(tags, TagNameApplicableTo, permissions.ApplicableTo);
         AddTagsOrAny(tags, TagNameSensitivity, [permissions.SensitivityLevel]);
+        AddTags(tags, TagNameApprovalStatus, [string.IsNullOrWhiteSpace(permissions.ApprovalStatus) ? ApprovalStatus.Approved.ToString() : permissions.ApprovalStatus]);
 
         return tags;
     }
@@ -171,7 +173,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         {
             allowedTags = allowedTags.Append(DtoConstants.PublicAllTagValue).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var anonymousSensitivity = WithAny(["public"]);
-            return [BuildFilter(agentId, [(TagNameTags, allowedTags), (TagNameSensitivity, anonymousSensitivity)])];
+            return [BuildFilter(agentId, [(TagNameTags, allowedTags), (TagNameSensitivity, anonymousSensitivity), (TagNameApprovalStatus, [authorization.ApprovalStatus.ToLower(CultureInfo.InvariantCulture)])])];
         }
 
         var hasAllowedTags = allowedTags.Count > 0;
@@ -200,6 +202,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         AddAxis(requiredAxes, TagNameCountries, countries);
         AddAxis(requiredAxes, TagNameLegalEntities, legalEntities);
         AddAxis(requiredAxes, TagNameSensitivity, sensitivityLevels);
+        AddAxis(requiredAxes, TagNameApprovalStatus, [authorization.ApprovalStatus.ToLower(CultureInfo.InvariantCulture)]);
 
         return [BuildFilter(agentId, requiredAxes)];
     }

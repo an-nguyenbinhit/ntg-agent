@@ -76,6 +76,7 @@ public class DocumentIngestionService : IDocumentIngestionService
         }
         catch (Exception ex)
         {
+            document.KnowledgeDocId = previousKnowledgeDocId;
             document.IngestStatus = IngestStatus.Failed;
             document.IngestErrorMessage = ex.Message;
             _logger.LogError(ex, "Failed to re-index document {DocumentId} for agent {AgentId}", document.Id, document.AgentId);
@@ -101,6 +102,7 @@ public class DocumentIngestionService : IDocumentIngestionService
         }
         catch (Exception ex)
         {
+            document.KnowledgeDocId = previousKnowledgeDocId;
             document.IngestStatus = IngestStatus.Failed;
             document.IngestErrorMessage = ex.Message;
             _logger.LogError(ex, "Failed to re-index document {DocumentId} with new stream for agent {AgentId}", document.Id, document.AgentId);
@@ -150,14 +152,15 @@ public class DocumentIngestionService : IDocumentIngestionService
             CreatedByUserId = userId,
             UpdatedByUserId = userId,
             Type = DocumentType.File,
-            Hash = hash
+            Hash = hash,
+            ApprovalStatus = ApprovalStatus.Pending
         };
 
         try
         {
-            // No permission metadata is available from the source; the document is imported
-            // without roles/tags so existing access control treats it as deny-by-default.
-            document.KnowledgeDocId = await _knowledgeService.ImportDocumentAsync(content, FileTypeService.SanitizeFileName(fileName), agentId, new DocumentPermissionMetadata(), ct);
+            // No permission metadata is available from the source; approval remains pending
+            // until an admin reviews and reindexes the document as approved.
+            document.KnowledgeDocId = await _knowledgeService.ImportDocumentAsync(content, FileTypeService.SanitizeFileName(fileName), agentId, new DocumentPermissionMetadata { ApprovalStatus = ApprovalStatus.Pending.ToString() }, ct);
             document.IngestStatus = IngestStatus.Success;
         }
         catch (Exception ex)
@@ -186,7 +189,8 @@ public class DocumentIngestionService : IDocumentIngestionService
         {
             Roles = document.Roles,
             BusinessUnits = document.BusinessUnits,
-            SensitivityLevel = document.SensitivityLevel
+            SensitivityLevel = document.SensitivityLevel,
+            ApprovalStatus = document.ApprovalStatus.ToString()
         }.WithAllowedTags(tags);
     }
 }

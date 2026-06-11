@@ -6,6 +6,7 @@ using AskHR.Common.Dtos.Services;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Extentions;
 using AskHR.Orchestrator.Models.Documents;
+using AskHR.Orchestrator.Models.Tags;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Common.Logger;
 using AskHR.ServiceDefaults.Logging.Metrics;
@@ -72,7 +73,9 @@ public class DocumentsController : ControllerBase
                     x.BusinessUnits,
                     x.SensitivityLevel,
                     x.IngestStatus,
-                    x.IngestErrorMessage))
+                    x.IngestErrorMessage,
+                    x.ApprovalStatus,
+                    x.NextReviewDate))
                 .ToListAsync();
             return Ok(defaultDocuments);
         }
@@ -90,7 +93,9 @@ public class DocumentsController : ControllerBase
             x.BusinessUnits,
             x.SensitivityLevel,
             x.IngestStatus,
-            x.IngestErrorMessage))
+            x.IngestErrorMessage,
+            x.ApprovalStatus,
+            x.NextReviewDate))
         .ToListAsync();
 
         _logger.LogBusinessEvent("DocumentsRetrieved", new { AgentId = agentId, DocumentCount = documents.Count });
@@ -146,7 +151,8 @@ public class DocumentsController : ControllerBase
         {
             Roles = roles ?? [],
             BusinessUnits = businessUnits ?? [],
-            SensitivityLevel = sensitivityLevel
+            SensitivityLevel = sensitivityLevel,
+            ApprovalStatus = ApprovalStatus.Pending.ToString()
         });
 
         var documents = new List<Document>();
@@ -166,6 +172,14 @@ public class DocumentsController : ControllerBase
                 {
                     if (existingDocument.Hash != hash)
                     {
+                        var previousHash = existingDocument.Hash;
+                        var previousRoles = existingDocument.Roles;
+                        var previousBusinessUnits = existingDocument.BusinessUnits;
+                        var previousSensitivityLevel = existingDocument.SensitivityLevel;
+                        var previousApprovalStatus = existingDocument.ApprovalStatus;
+                        var previousApprovedByUserId = existingDocument.ApprovedByUserId;
+                        var previousNextReviewDate = existingDocument.NextReviewDate;
+
                         // Re-index because file changed
                         existingDocument.Hash = hash;
                         existingDocument.UpdatedByUserId = userId;
@@ -173,18 +187,34 @@ public class DocumentsController : ControllerBase
                         existingDocument.Roles = permissions.Roles;
                         existingDocument.BusinessUnits = permissions.BusinessUnits;
                         existingDocument.SensitivityLevel = permissions.SensitivityLevel;
+                        existingDocument.ApprovalStatus = ApprovalStatus.Pending;
+                        existingDocument.ApprovedByUserId = null;
+                        existingDocument.NextReviewDate = null;
 
                         await _documentIngestionService.ReindexExistingDocumentWithStreamAsync(existingDocument, stream, permissions, ct);
 
-                        // Update Tags
-                        _agentDbContext.DocumentTags.RemoveRange(existingDocument.DocumentTags);
-                        foreach (var tag in tags)
+                        if (existingDocument.IngestStatus == IngestStatus.Success)
                         {
-                            _agentDbContext.DocumentTags.Add(new DocumentTag
+                            // Update Tags
+                            _agentDbContext.DocumentTags.RemoveRange(existingDocument.DocumentTags);
+                            foreach (var tag in tags)
                             {
-                                DocumentId = existingDocument.Id,
-                                TagId = new Guid(tag)
-                            });
+                                _agentDbContext.DocumentTags.Add(new DocumentTag
+                                {
+                                    DocumentId = existingDocument.Id,
+                                    TagId = new Guid(tag)
+                                });
+                            }
+                        }
+                        else
+                        {
+                            existingDocument.Hash = previousHash;
+                            existingDocument.Roles = previousRoles;
+                            existingDocument.BusinessUnits = previousBusinessUnits;
+                            existingDocument.SensitivityLevel = previousSensitivityLevel;
+                            existingDocument.ApprovalStatus = previousApprovalStatus;
+                            existingDocument.ApprovedByUserId = previousApprovedByUserId;
+                            existingDocument.NextReviewDate = previousNextReviewDate;
                         }
                     }
                     // If hash is same, we don't re-index. We might still update metadata if requested, 
@@ -209,6 +239,7 @@ public class DocumentsController : ControllerBase
                         BusinessUnits = permissions.BusinessUnits,
                         SensitivityLevel = permissions.SensitivityLevel,
                         IngestStatus = IngestStatus.Success,
+                        ApprovalStatus = ApprovalStatus.Pending,
                         Hash = hash
                     };
                     documents.Add(document);
@@ -229,7 +260,11 @@ public class DocumentsController : ControllerBase
         {
             _agentDbContext.Documents.AddRange(documents);
             _agentDbContext.DocumentTags.AddRange(documentTags);
-            await _agentDbContext.SaveChangesAsync();
+            await _agentDbContext.SaveChangesAsync(ct);
+        }
+        else if (_agentDbContext.ChangeTracker.HasChanges())
+        {
+            await _agentDbContext.SaveChangesAsync(ct);
         }
 
         return Ok(new { message = "Files uploaded successfully." });
@@ -256,7 +291,8 @@ public class DocumentsController : ControllerBase
             return Unauthorized();
         }
 
-        var document = await _agentDbContext.Documents.FindAsync(id);
+        var document = await _agentDbContext.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.AgentId == agentId, ct);
 
         if (document == null)
         {
@@ -288,6 +324,8 @@ public class DocumentsController : ControllerBase
         var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
 
         var document = await _agentDbContext.Documents
+            .Include(d => d.DocumentTags)
+            .ThenInclude(dt => dt.Tag)
             .FirstOrDefaultAsync(d => d.Id == id && d.AgentId == agentId, ct);
 
         if (document is null)
@@ -301,6 +339,33 @@ public class DocumentsController : ControllerBase
         document.UpdatedByUserId = userId;
         document.UpdatedAt = DateTime.UtcNow;
 
+        var requestedTags = request.Tags is null ? null : NormalizeTags(request.Tags);
+        if (requestedTags != null)
+        {
+            _agentDbContext.DocumentTags.RemoveRange(document.DocumentTags);
+            foreach (var tagName in requestedTags)
+            {
+                var tag = await _agentDbContext.Tags.FirstOrDefaultAsync(t => t.Name == tagName, ct);
+                if (tag == null)
+                {
+                    tag = new Tag
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = tagName
+                    };
+                    _agentDbContext.Tags.Add(tag);
+                }
+
+                _agentDbContext.DocumentTags.Add(new DocumentTag
+                {
+                    DocumentId = document.Id,
+                    TagId = tag.Id
+                });
+            }
+        }
+
+        await _agentDbContext.SaveChangesAsync(ct);
+
         await _documentIngestionService.ReindexDocumentAsync(document, ct);
 
         await _agentDbContext.SaveChangesAsync(ct);
@@ -312,12 +377,57 @@ public class DocumentsController : ControllerBase
             document.Name,
             document.CreatedAt,
             document.UpdatedAt,
-            [],
+            requestedTags ?? document.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
             document.Roles,
             document.BusinessUnits,
             document.SensitivityLevel,
             document.IngestStatus,
-            document.IngestErrorMessage));
+            document.IngestErrorMessage,
+            document.ApprovalStatus,
+            document.NextReviewDate));
+    }
+
+    [HttpPut("{agentId}/{id}/approval")]
+    [Authorize]
+    public async Task<IActionResult> UpdateDocumentApprovalStatus(Guid agentId, Guid id, [FromBody] DocumentApprovalUpdateRequest request, CancellationToken ct)
+    {
+        var userId = User.GetUserId() ?? throw new UnauthorizedAccessException("User is not authenticated.");
+
+        var document = await _agentDbContext.Documents
+            .FirstOrDefaultAsync(d => d.Id == id && d.AgentId == agentId, ct);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        var previousApprovalStatus = document.ApprovalStatus;
+        var previousApprovedByUserId = document.ApprovedByUserId;
+        var previousNextReviewDate = document.NextReviewDate;
+
+        document.ApprovalStatus = request.ApprovalStatus;
+        document.ApprovedByUserId = request.ApprovalStatus == ApprovalStatus.Approved ? userId : null;
+        document.NextReviewDate = request.ApprovalStatus == ApprovalStatus.Approved ? request.NextReviewDate : null;
+        document.UpdatedByUserId = userId;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        await _documentIngestionService.ReindexDocumentAsync(document, ct);
+
+        _logger.LogBusinessEvent("DocumentApprovalStatusUpdated", new { AgentId = agentId, DocumentId = id, document.ApprovalStatus, document.IngestStatus });
+
+        if (document.IngestStatus == IngestStatus.Failed)
+        {
+            var requestedApprovalStatus = request.ApprovalStatus;
+            document.ApprovalStatus = previousApprovalStatus;
+            document.ApprovedByUserId = previousApprovedByUserId;
+            document.NextReviewDate = previousNextReviewDate;
+            await _agentDbContext.SaveChangesAsync(ct);
+            return StatusCode(StatusCodes.Status502BadGateway, new { RequestedApprovalStatus = requestedApprovalStatus, CurrentApprovalStatus = document.ApprovalStatus, document.IngestStatus, document.IngestErrorMessage });
+        }
+
+        await _agentDbContext.SaveChangesAsync(ct);
+
+        return Ok(new { document.ApprovalStatus, document.NextReviewDate, document.IngestStatus });
     }
 
     /// <summary>
@@ -375,8 +485,9 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var tags = request.Tags ?? [];
+            var tags = NormalizeTags(request.Tags);
             var permissions = BuildPermissions(tags, request.Permissions);
+            permissions = permissions with { ApprovalStatus = ApprovalStatus.Pending.ToString() };
             var documentId = await _knowledgeService.ImportWebPageAsync(request.Url, agentId, permissions);
 
             var document = new Document
@@ -395,7 +506,8 @@ public class DocumentsController : ControllerBase
                 Roles = permissions.Roles,
                 BusinessUnits = permissions.BusinessUnits,
                 SensitivityLevel = permissions.SensitivityLevel,
-                IngestStatus = IngestStatus.Success
+                IngestStatus = IngestStatus.Success,
+                ApprovalStatus = ApprovalStatus.Pending
             };
 
             var documentTags = new List<DocumentTag>();
@@ -446,8 +558,9 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var tags = request.Tags ?? [];
+            var tags = NormalizeTags(request.Tags);
             var permissions = BuildPermissions(tags, request.Permissions);
+            permissions = permissions with { ApprovalStatus = ApprovalStatus.Pending.ToString() };
             var fileName = string.IsNullOrWhiteSpace(request.Title) ? "Text Content.txt" : $"{request.Title}.txt";
             var knowledgeDocId = await _knowledgeService.ImportTextContentAsync(request.Content, fileName, agentId, permissions);
 
@@ -466,7 +579,8 @@ public class DocumentsController : ControllerBase
                 Roles = permissions.Roles,
                 BusinessUnits = permissions.BusinessUnits,
                 SensitivityLevel = permissions.SensitivityLevel,
-                IngestStatus = IngestStatus.Success
+                IngestStatus = IngestStatus.Success,
+                ApprovalStatus = ApprovalStatus.Pending
             };
 
             var documentTags = new List<DocumentTag>();
@@ -592,6 +706,15 @@ public class DocumentsController : ControllerBase
     private static DocumentPermissionMetadata BuildPermissions(IEnumerable<string>? tags, DocumentPermissionMetadata? permissions)
     {
         return (permissions ?? new DocumentPermissionMetadata()).WithAllowedTags(tags);
+    }
+
+    private static List<string> NormalizeTags(IEnumerable<string>? tags)
+    {
+        return tags?
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
     }
 }
 
