@@ -464,20 +464,53 @@ public class DocumentsControllerTests
         };
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
+        DocumentPermissionMetadata? capturedPermissions = null;
         _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Guid, DocumentPermissionMetadata, CancellationToken>((_, _, permissions, _) => capturedPermissions = permissions)
             .ReturnsAsync("new-knowledge-doc-id");
-        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Confidential");
+        var effectiveDate = new DateTime(2026, 1, 1);
+        var expiredDate = new DateTime(2026, 12, 31);
+        var request = new DocumentMetadataUpdateRequest(
+            ["HR"],
+            ["Finance"],
+            "Confidential",
+            "Jane Owner",
+            "2.1",
+            effectiveDate,
+            expiredDate,
+            ["VN", "SG"],
+            ["NTG-VN"],
+            ["L2", "Manager"]);
         // Act
         var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
         // Assert
         var okResult = result as OkObjectResult;
         Assert.That(okResult, Is.Not.Null);
+        var response = okResult.Value as DocumentListItem;
+        Assert.That(response, Is.Not.Null);
         var updatedDocument = await _context.Documents.FindAsync(document.Id);
         Assert.That(updatedDocument!.Roles, Is.EquivalentTo(new[] { "HR" }));
         Assert.That(updatedDocument.BusinessUnits, Is.EquivalentTo(new[] { "Finance" }));
         Assert.That(updatedDocument.SensitivityLevel, Is.EqualTo("Confidential"));
+        Assert.That(updatedDocument.Owner, Is.EqualTo("Jane Owner"));
+        Assert.That(updatedDocument.Version, Is.EqualTo("2.1"));
+        Assert.That(updatedDocument.EffectiveDate, Is.EqualTo(effectiveDate));
+        Assert.That(updatedDocument.ExpiredDate, Is.EqualTo(expiredDate));
+        Assert.That(updatedDocument.Countries, Is.EquivalentTo(new[] { "VN", "SG" }));
+        Assert.That(updatedDocument.LegalEntities, Is.EquivalentTo(new[] { "NTG-VN" }));
+        Assert.That(updatedDocument.ApplicableLevels, Is.EquivalentTo(new[] { "L2", "Manager" }));
         Assert.That(updatedDocument.IngestStatus, Is.EqualTo(IngestStatus.Success));
         Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("new-knowledge-doc-id"));
+        Assert.That(response!.Owner, Is.EqualTo("Jane Owner"));
+        Assert.That(response.Version, Is.EqualTo("2.1"));
+        Assert.That(response.Countries, Is.EquivalentTo(new[] { "VN", "SG" }));
+        Assert.That(response.LegalEntities, Is.EquivalentTo(new[] { "NTG-VN" }));
+        Assert.That(response.ApplicableLevels, Is.EquivalentTo(new[] { "L2", "Manager" }));
+        Assert.That(capturedPermissions, Is.Not.Null);
+        Assert.That(capturedPermissions!.Countries, Is.EquivalentTo(new[] { "VN", "SG" }));
+        Assert.That(capturedPermissions.LegalEntities, Is.EquivalentTo(new[] { "NTG-VN" }));
+        Assert.That(capturedPermissions.ApplicableLevels, Is.EquivalentTo(new[] { "L2", "Manager" }));
+        Assert.That(capturedPermissions.ApplicableTo, Is.EquivalentTo(new[] { "L2", "Manager" }));
         _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()), Times.Once);
     }
     [Test]

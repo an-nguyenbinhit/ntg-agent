@@ -72,6 +72,13 @@ public class DocumentsController : ControllerBase
                     x.Roles,
                     x.BusinessUnits,
                     x.SensitivityLevel,
+                    x.Owner,
+                    x.Version,
+                    x.EffectiveDate,
+                    x.ExpiredDate,
+                    x.Countries,
+                    x.LegalEntities,
+                    x.ApplicableLevels,
                     x.IngestStatus,
                     x.IngestErrorMessage,
                     x.ApprovalStatus,
@@ -92,6 +99,13 @@ public class DocumentsController : ControllerBase
             x.Roles,
             x.BusinessUnits,
             x.SensitivityLevel,
+            x.Owner,
+            x.Version,
+            x.EffectiveDate,
+            x.ExpiredDate,
+            x.Countries,
+            x.LegalEntities,
+            x.ApplicableLevels,
             x.IngestStatus,
             x.IngestErrorMessage,
             x.ApprovalStatus,
@@ -127,6 +141,9 @@ public class DocumentsController : ControllerBase
         [FromQuery] List<string> tags,
         [FromQuery] List<string>? roles = null,
         [FromQuery] List<string>? businessUnits = null,
+        [FromQuery] List<string>? countries = null,
+        [FromQuery] List<string>? legalEntities = null,
+        [FromQuery] List<string>? applicableLevels = null,
         [FromQuery] string? sensitivityLevel = null,
         CancellationToken ct = default)
     {
@@ -151,6 +168,10 @@ public class DocumentsController : ControllerBase
         {
             Roles = roles ?? [],
             BusinessUnits = businessUnits ?? [],
+            Countries = countries ?? [],
+            LegalEntities = legalEntities ?? [],
+            ApplicableLevels = applicableLevels ?? [],
+            ApplicableTo = applicableLevels ?? [],
             SensitivityLevel = sensitivityLevel,
             ApprovalStatus = ApprovalStatus.Pending.ToString()
         });
@@ -175,6 +196,9 @@ public class DocumentsController : ControllerBase
                         var previousHash = existingDocument.Hash;
                         var previousRoles = existingDocument.Roles;
                         var previousBusinessUnits = existingDocument.BusinessUnits;
+                        var previousCountries = existingDocument.Countries;
+                        var previousLegalEntities = existingDocument.LegalEntities;
+                        var previousApplicableLevels = existingDocument.ApplicableLevels;
                         var previousSensitivityLevel = existingDocument.SensitivityLevel;
                         var previousApprovalStatus = existingDocument.ApprovalStatus;
                         var previousApprovedByUserId = existingDocument.ApprovedByUserId;
@@ -186,6 +210,9 @@ public class DocumentsController : ControllerBase
                         existingDocument.UpdatedAt = DateTime.UtcNow;
                         existingDocument.Roles = permissions.Roles;
                         existingDocument.BusinessUnits = permissions.BusinessUnits;
+                        existingDocument.Countries = permissions.Countries;
+                        existingDocument.LegalEntities = permissions.LegalEntities;
+                        existingDocument.ApplicableLevels = permissions.ApplicableLevels;
                         existingDocument.SensitivityLevel = permissions.SensitivityLevel;
                         existingDocument.ApprovalStatus = ApprovalStatus.Pending;
                         existingDocument.ApprovedByUserId = null;
@@ -211,6 +238,9 @@ public class DocumentsController : ControllerBase
                             existingDocument.Hash = previousHash;
                             existingDocument.Roles = previousRoles;
                             existingDocument.BusinessUnits = previousBusinessUnits;
+                            existingDocument.Countries = previousCountries;
+                            existingDocument.LegalEntities = previousLegalEntities;
+                            existingDocument.ApplicableLevels = previousApplicableLevels;
                             existingDocument.SensitivityLevel = previousSensitivityLevel;
                             existingDocument.ApprovalStatus = previousApprovalStatus;
                             existingDocument.ApprovedByUserId = previousApprovedByUserId;
@@ -237,6 +267,9 @@ public class DocumentsController : ControllerBase
                         Type = DocumentType.File,
                         Roles = permissions.Roles,
                         BusinessUnits = permissions.BusinessUnits,
+                        Countries = permissions.Countries,
+                        LegalEntities = permissions.LegalEntities,
+                        ApplicableLevels = permissions.ApplicableLevels,
                         SensitivityLevel = permissions.SensitivityLevel,
                         IngestStatus = IngestStatus.Success,
                         ApprovalStatus = ApprovalStatus.Pending,
@@ -336,6 +369,13 @@ public class DocumentsController : ControllerBase
         document.Roles = request.Roles ?? [];
         document.BusinessUnits = request.BusinessUnits ?? [];
         document.SensitivityLevel = request.SensitivityLevel;
+        document.Owner = request.Owner;
+        document.Version = request.Version;
+        document.EffectiveDate = request.EffectiveDate;
+        document.ExpiredDate = request.ExpiredDate;
+        document.Countries = request.Countries ?? [];
+        document.LegalEntities = request.LegalEntities ?? [];
+        document.ApplicableLevels = request.ApplicableLevels ?? [];
         document.UpdatedByUserId = userId;
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -381,6 +421,13 @@ public class DocumentsController : ControllerBase
             document.Roles,
             document.BusinessUnits,
             document.SensitivityLevel,
+            document.Owner,
+            document.Version,
+            document.EffectiveDate,
+            document.ExpiredDate,
+            document.Countries,
+            document.LegalEntities,
+            document.ApplicableLevels,
             document.IngestStatus,
             document.IngestErrorMessage,
             document.ApprovalStatus,
@@ -505,6 +552,9 @@ public class DocumentsController : ControllerBase
                 Type = DocumentType.WebPage,
                 Roles = permissions.Roles,
                 BusinessUnits = permissions.BusinessUnits,
+                Countries = permissions.Countries,
+                LegalEntities = permissions.LegalEntities,
+                ApplicableLevels = permissions.ApplicableLevels,
                 SensitivityLevel = permissions.SensitivityLevel,
                 IngestStatus = IngestStatus.Success,
                 ApprovalStatus = ApprovalStatus.Pending
@@ -578,6 +628,9 @@ public class DocumentsController : ControllerBase
                 Type = DocumentType.Text,
                 Roles = permissions.Roles,
                 BusinessUnits = permissions.BusinessUnits,
+                Countries = permissions.Countries,
+                LegalEntities = permissions.LegalEntities,
+                ApplicableLevels = permissions.ApplicableLevels,
                 SensitivityLevel = permissions.SensitivityLevel,
                 IngestStatus = IngestStatus.Success,
                 ApprovalStatus = ApprovalStatus.Pending
@@ -705,7 +758,17 @@ public class DocumentsController : ControllerBase
 
     private static DocumentPermissionMetadata BuildPermissions(IEnumerable<string>? tags, DocumentPermissionMetadata? permissions)
     {
-        return (permissions ?? new DocumentPermissionMetadata()).WithAllowedTags(tags);
+        permissions ??= new DocumentPermissionMetadata();
+        var applicableLevels = permissions.ApplicableLevels.Count > 0
+            ? permissions.ApplicableLevels
+            : permissions.ApplicableTo;
+
+        return permissions with
+        {
+            ApplicableLevels = applicableLevels,
+            ApplicableTo = applicableLevels,
+            AllowedTags = tags?.ToList() ?? []
+        };
     }
 
     private static List<string> NormalizeTags(IEnumerable<string>? tags)

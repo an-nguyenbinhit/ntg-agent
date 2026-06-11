@@ -153,7 +153,7 @@ public class KernelMemoryKnowledge : IKnowledgeService
         AddTagsOrAny(tags, TagNameCountries, permissions.Countries);
         AddTagsOrAny(tags, TagNameLegalEntities, permissions.LegalEntities);
         // Relevance metadata for future level-aware retrieval; not an access axis yet.
-        AddTags(tags, TagNameApplicableTo, permissions.ApplicableTo);
+        AddTags(tags, TagNameApplicableTo, permissions.ApplicableLevels.Concat(permissions.ApplicableTo));
         AddTagsOrAny(tags, TagNameSensitivity, [permissions.SensitivityLevel]);
         AddTags(tags, TagNameApprovalStatus, [string.IsNullOrWhiteSpace(permissions.ApprovalStatus) ? ApprovalStatus.Approved.ToString() : permissions.ApprovalStatus]);
 

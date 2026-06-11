@@ -12,6 +12,8 @@ public sealed record DocumentPermissionMetadata
 
     public List<string> LegalEntities { get; init; } = [];
 
+    public List<string> ApplicableLevels { get; init; } = [];
+
     public List<string> ApplicableTo { get; init; } = [];
 
     public string? SensitivityLevel { get; init; }

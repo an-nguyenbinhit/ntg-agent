@@ -142,6 +142,9 @@ public class DocumentIngestionServiceTests
             Hash = "OLDHASH",
             Roles = ["HR"],
             BusinessUnits = ["VN"],
+            Countries = ["VN", "SG"],
+            LegalEntities = ["NTG-VN"],
+            ApplicableLevels = ["L2"],
             SensitivityLevel = "Internal"
         };
         _context.Documents.Add(existing);
@@ -160,6 +163,10 @@ public class DocumentIngestionServiceTests
         Assert.That(capturedPermissions, Is.Not.Null);
         Assert.That(capturedPermissions!.Roles, Is.EquivalentTo(new[] { "HR" }));
         Assert.That(capturedPermissions.BusinessUnits, Is.EquivalentTo(new[] { "VN" }));
+        Assert.That(capturedPermissions.Countries, Is.EquivalentTo(new[] { "VN", "SG" }));
+        Assert.That(capturedPermissions.LegalEntities, Is.EquivalentTo(new[] { "NTG-VN" }));
+        Assert.That(capturedPermissions.ApplicableLevels, Is.EquivalentTo(new[] { "L2" }));
+        Assert.That(capturedPermissions.ApplicableTo, Is.EquivalentTo(new[] { "L2" }));
         Assert.That(capturedPermissions.SensitivityLevel, Is.EqualTo("Internal"));
     }
 

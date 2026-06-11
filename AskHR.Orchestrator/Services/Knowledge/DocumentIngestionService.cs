@@ -189,6 +189,10 @@ public class DocumentIngestionService : IDocumentIngestionService
         {
             Roles = document.Roles,
             BusinessUnits = document.BusinessUnits,
+            Countries = document.Countries,
+            LegalEntities = document.LegalEntities,
+            ApplicableLevels = document.ApplicableLevels,
+            ApplicableTo = document.ApplicableLevels,
             SensitivityLevel = document.SensitivityLevel,
             ApprovalStatus = document.ApprovalStatus.ToString()
         }.WithAllowedTags(tags);

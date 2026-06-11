@@ -11,11 +11,17 @@ public record DocumentListItem (
     List<string> Roles,
     List<string> BusinessUnits,
     string? SensitivityLevel,
+    string? Owner,
+    string? Version,
+    DateTime? EffectiveDate,
+    DateTime? ExpiredDate,
+    List<string> Countries,
+    List<string> LegalEntities,
+    List<string> ApplicableLevels,
     IngestStatus IngestStatus,
     string? IngestErrorMessage,
     ApprovalStatus ApprovalStatus,
     DateTime? NextReviewDate)
 {
-    public string FormattedCreatedAt => CreatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     public string FormattedUpdatedAt => UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 };

@@ -22,6 +22,14 @@ public class Document
     public DateTime UpdatedAt { get; set; }
     public DocumentType Type { get; set; } = DocumentType.File;
 
+    public string? Owner { get; set; }
+    public string? Version { get; set; }
+    public DateTime? EffectiveDate { get; set; }
+    public DateTime? ExpiredDate { get; set; }
+    public List<string> Countries { get; set; } = [];
+    public List<string> LegalEntities { get; set; } = [];
+    public List<string> ApplicableLevels { get; set; } = [];
+
     public List<string> Roles { get; set; } = [];
     public List<string> BusinessUnits { get; set; } = [];
     public string? SensitivityLevel { get; set; }

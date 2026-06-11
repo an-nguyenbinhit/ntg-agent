@@ -16,6 +16,28 @@
                         <p class="form-control-plaintext">@Document.Name</p>
                     </div>
 
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Owner</label>
+                            <input type="text" class="form-control" @bind="owner" placeholder="e.g. John Doe" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Version</label>
+                            <input type="text" class="form-control" @bind="version" placeholder="e.g. 1.0" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Effective Date</label>
+                            <InputDate class="form-control" @bind-Value="effectiveDate" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">Expired Date</label>
+                            <InputDate class="form-control" @bind-Value="expiredDate" />
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Sensitivity Level</label>
                         <select class="form-select" @bind="sensitivityLevel">
@@ -36,6 +58,21 @@
                         <input type="text" class="form-control" @bind="businessUnitsInput" placeholder="e.g. Vietnam, Global (comma separated)" />
                         <div class="form-text">Comma-separated list of business units allowed to access this document.</div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Countries</label>
+                        <input type="text" class="form-control" @bind="countriesInput" placeholder="e.g. VN, SG (comma separated)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Legal Entities</label>
+                        <input type="text" class="form-control" @bind="legalEntitiesInput" placeholder="e.g. NTG, NTS (comma separated)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Applicable Levels</label>
+                        <input type="text" class="form-control" @bind="applicableLevelsInput" placeholder="e.g. L1, L2 (comma separated)" />
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Tags</label>
                         <input type="text" class="form-control" @bind="tagsInput" placeholder="e.g. policy, onboarding, tax (comma separated)" />
@@ -75,6 +112,13 @@
     [Parameter]
     public EventCallback<DocumentMetadataUpdateRequest> OnSave { get; set; }
 
+    private string? owner;
+    private string? version;
+    private DateTime? effectiveDate;
+    private DateTime? expiredDate;
+    private string countriesInput = string.Empty;
+    private string legalEntitiesInput = string.Empty;
+    private string applicableLevelsInput = string.Empty;
     private string sensitivityLevel = "Internal";
     private string rolesInput = string.Empty;
     private string businessUnitsInput = string.Empty;
@@ -85,9 +129,16 @@
     {
         if (IsVisible && Document != null)
         {
+            owner = Document.Owner;
+            version = Document.Version;
+            effectiveDate = Document.EffectiveDate;
+            expiredDate = Document.ExpiredDate;
             sensitivityLevel = string.IsNullOrWhiteSpace(Document.SensitivityLevel) ? "Internal" : Document.SensitivityLevel;
             rolesInput = string.Join(", ", Document.Roles ?? new List<string>());
             businessUnitsInput = string.Join(", ", Document.BusinessUnits ?? new List<string>());
+            countriesInput = string.Join(", ", Document.Countries ?? new List<string>());
+            legalEntitiesInput = string.Join(", ", Document.LegalEntities ?? new List<string>());
+            applicableLevelsInput = string.Join(", ", Document.ApplicableLevels ?? new List<string>());
             tagsInput = string.Join(", ", Document.Tags ?? new List<string>());
         }
     }
@@ -110,11 +161,34 @@
                 ? new List<string>() 
                 : businessUnitsInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
 
+            var countries = string.IsNullOrWhiteSpace(countriesInput) 
+                ? new List<string>() 
+                : countriesInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
+
+            var legalEntities = string.IsNullOrWhiteSpace(legalEntitiesInput) 
+                ? new List<string>() 
+                : legalEntitiesInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
+
+            var applicableLevels = string.IsNullOrWhiteSpace(applicableLevelsInput) 
+                ? new List<string>() 
+                : applicableLevelsInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
+
             var tags = string.IsNullOrWhiteSpace(tagsInput)
                 ? new List<string>()
                 : tagsInput.Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList();
 
-            var request = new DocumentMetadataUpdateRequest(roles, businessUnits, sensitivityLevel, tags);
+            var request = new DocumentMetadataUpdateRequest(
+                roles, 
+                businessUnits, 
+                sensitivityLevel, 
+                owner, 
+                version, 
+                effectiveDate, 
+                expiredDate, 
+                countries, 
+                legalEntities, 
+                applicableLevels, 
+                tags);
 
             await OnSave.InvokeAsync(request);
         }
