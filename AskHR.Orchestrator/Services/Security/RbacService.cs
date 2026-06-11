@@ -56,17 +56,32 @@ public sealed class RbacService : IRbacService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var profile = await _dbContext.UserProfiles
+            .FirstOrDefaultAsync(x => x.UserId == userId.Value, cancellationToken);
+
+        var businessUnits = profile?.BusinessUnits ?? [];
+        if (businessUnits.Count == 0) businessUnits = GetConfiguredList("Authorization:Mock:BusinessUnits");
+
+        var countries = profile?.Countries ?? [];
+        if (countries.Count == 0) countries = GetConfiguredList("Authorization:Mock:Countries");
+
+        var legalEntities = profile?.LegalEntities ?? [];
+        if (legalEntities.Count == 0) legalEntities = GetConfiguredList("Authorization:Mock:LegalEntities");
+
+        var level = profile?.Level ?? GetConfiguredValue("Authorization:Mock:Level");
+        var sensitivityLevel = profile?.SensitivityLevel ?? GetConfiguredValue("Authorization:Mock:SensitivityLevel") ?? "Internal";
+
         return new AuthorizationContext
         {
             UserId = userId.Value,
             IsAnonymous = false,
             Roles = roles,
             AllowedTags = allowedTags,
-            BusinessUnits = GetConfiguredList("Authorization:Mock:BusinessUnits"),
-            Countries = GetConfiguredList("Authorization:Mock:Countries"),
-            LegalEntities = GetConfiguredList("Authorization:Mock:LegalEntities"),
-            Level = GetConfiguredValue("Authorization:Mock:Level"),
-            SensitivityLevel = GetConfiguredValue("Authorization:Mock:SensitivityLevel") ?? "Internal"
+            BusinessUnits = businessUnits,
+            Countries = countries,
+            LegalEntities = legalEntities,
+            Level = level,
+            SensitivityLevel = sensitivityLevel
         };
     }
 

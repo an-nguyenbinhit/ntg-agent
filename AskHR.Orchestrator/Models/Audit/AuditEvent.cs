@@ -14,5 +14,9 @@ public class AuditEvent
     public string? Model { get; set; }
     public string? FallbackReason { get; set; }
     public int CitationCount { get; set; }
+    public long? PromptTokens { get; set; }
+    public long? CompletionTokens { get; set; }
+    public long? TotalTokens { get; set; }
+    public long LatencyMs { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

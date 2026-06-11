@@ -33,6 +33,7 @@ public class AgentService
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IUserMemoryService _memoryService;
     private readonly IDocumentAnalysisService _documentAnalysisService;
+    private readonly AskHR.Orchestrator.Services.Audit.IAuditEventSink _auditEventSink;
     private readonly ILogger<AgentService> _logger;
     private const int MAX_LATEST_MESSAGE_TO_KEEP_FULL = 5;
 
@@ -46,6 +47,7 @@ public class AgentService
         IHttpContextAccessor httpContextAccessor,
         IUserMemoryService memoryService,
         IDocumentAnalysisService documentAnalysisService,
+        AskHR.Orchestrator.Services.Audit.IAuditEventSink auditEventSink,
         ILogger<AgentService> logger)
     {
         _agentFactory = agentFactory;
@@ -58,6 +60,7 @@ public class AgentService
         _memoryService = memoryService;
         _logger = logger;
         _documentAnalysisService = documentAnalysisService;
+        _auditEventSink = auditEventSink;
     }
 
     public async IAsyncEnumerable<PromptResponse> ChatStreamingAsync(Guid? userId, PromptRequestForm promptRequest)
@@ -486,5 +489,33 @@ public class AgentService
 
         _agentDbContext.TokenUsages.Add(tokenUsage);
         await _agentDbContext.SaveChangesAsync();
+
+        // Emit an audit event for the token usage
+        var channel = userId.HasValue ? "authenticated" : "anonymous";
+        var isAnonymous = !userId.HasValue;
+        
+        // Use messageId string or fallback
+        var textContext = messageId?.ToString() ?? "TokenUsageEvent";
+
+        var auditEvent = new AskHR.Common.Dtos.Audit.AuditEventDto(
+            $"chat.{operationType.ToLowerInvariant()}",
+            agentId,
+            userId,
+            isAnonymous,
+            channel,
+            MaskedText: "***", 
+            TextHash: "***", 
+            Provider: agentConfig.ProviderName,
+            Model: agentConfig.ProviderModelName,
+            FallbackReason: null,
+            CitationCount: 0,
+            PromptTokens: tokenUsageInfo.InputTokens,
+            CompletionTokens: tokenUsageInfo.OutputTokens,
+            TotalTokens: tokenUsageInfo.TotalTokens,
+            LatencyMs: (long)responseTime.TotalMilliseconds,
+            CreatedAt: DateTimeOffset.UtcNow
+        );
+
+        await _auditEventSink.WriteAsync(auditEvent);
     }
 }

@@ -56,6 +56,10 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
 
     public DbSet<AuditEvent> AuditEvents { get; set; } = null!;
 
+    public DbSet<FeedbackEvent> FeedbackEvents { get; set; } = null!;
+
+    public DbSet<UserProfile> UserProfiles { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var guidToString = new ValueConverter<Guid, string>(
@@ -162,6 +166,30 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             t.Property(ur => ur.RoleId)
                .HasConversion(guidToString)
                .HasColumnType("nvarchar(450)");
+        });
+
+        modelBuilder.Entity<UserProfile>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.HasOne(x => x.User)
+             .WithOne()
+             .HasForeignKey<UserProfile>(x => x.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(x => x.BusinessUnits)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.Countries)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.LegalEntities)
+                .HasConversion(stringListToJson)
+                .Metadata.SetValueComparer(stringListComparer);
+
+            e.Property(x => x.Level).HasMaxLength(128);
+            e.Property(x => x.SensitivityLevel).HasMaxLength(128);
         });
 
         base.OnModelCreating(modelBuilder);
@@ -392,6 +420,17 @@ public class AgentDbContext(DbContextOptions<AgentDbContext> options) : DbContex
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.TextHash);
             e.HasIndex(x => new { x.AgentId, x.Channel, x.CreatedAt });
+        });
+
+        modelBuilder.Entity<FeedbackEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Rating).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Topic).HasMaxLength(128);
+            e.Property(x => x.SeverityCandidate).HasMaxLength(32);
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.HasIndex(x => x.MessageId);
+            e.HasIndex(x => x.CreatedAt);
         });
 
         // AnonymousSession configuration

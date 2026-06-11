@@ -28,11 +28,6 @@ public class AnonymousSessionService : IAnonymousSessionService
 
     public async Task<RateLimitStatus> CheckRateLimitAsync(Guid sessionId, string? ipAddress)
     {
-        // Opportunistic cleanup (probabilistic to avoid overhead) - TODO: Consider running in background job instead
-        if (Random.Shared.NextDouble() < _settings.CleanupProbability)
-        {
-            _ = Task.Run(() => CleanupOldSessionsAsync());
-        }
 
         var session = await GetOrCreateSessionAsync(sessionId, ipAddress);
 
@@ -146,33 +141,5 @@ public class AnonymousSessionService : IAnonymousSessionService
         await _context.SaveChangesAsync();
     }
 
-    private async Task CleanupOldSessionsAsync()
-    {
-        try
-        {
-            var cutoffDate = DateTime.UtcNow.AddDays(-_settings.SessionExpirationDays);
 
-            // Delete only a small batch to avoid long-running queries
-            var expiredSessions = await _context.AnonymousSessions
-                .Where(s => s.LastMessageAt < cutoffDate)
-                .Take(100)
-                .ToListAsync();
-
-            if (expiredSessions?.Count > 0)
-            {
-                _context.AnonymousSessions.RemoveRange(expiredSessions);
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation(
-                    "Cleaned up {Count} expired anonymous sessions (older than {Days} days)",
-                    expiredSessions.Count,
-                    _settings.SessionExpirationDays);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Don't fail the main request if cleanup fails
-            _logger.LogError(ex, "Error during opportunistic anonymous session cleanup");
-        }
-    }
 }

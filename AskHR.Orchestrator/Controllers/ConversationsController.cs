@@ -389,7 +389,7 @@ public class ConversationsController : ControllerBase
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             UserId = userId,
-            SessionId = (!userId.HasValue && !string.IsNullOrWhiteSpace(currentSessionId)) ? Guid.Parse(currentSessionId) : null // Set SessionId if user is not authenticated. TODO: Implement a clean-up job/mechanism for the anonymous conversations + chats.
+            SessionId = (!userId.HasValue && !string.IsNullOrWhiteSpace(currentSessionId)) ? Guid.Parse(currentSessionId) : null // Set SessionId if user is not authenticated.
         };
         _context.Conversations.Add(conversation);
         await _context.SaveChangesAsync();

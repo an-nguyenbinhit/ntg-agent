@@ -10,4 +10,7 @@ public sealed record AnswerAuditMetadataDto(
     string RetrievalStrategy,
     int CitationCount,
     string? FallbackReason,
-    long LatencyMs);
+    long LatencyMs,
+    int? PromptTokens = null,
+    int? CompletionTokens = null,
+    int? TotalTokens = null);

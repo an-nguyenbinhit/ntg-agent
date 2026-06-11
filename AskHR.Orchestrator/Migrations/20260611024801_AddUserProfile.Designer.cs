@@ -4,6 +4,7 @@ using AskHR.Orchestrator.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AskHR.Orchestrator.Migrations
 {
     [DbContext(typeof(AgentDbContext))]
-    partial class AgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611024801_AddUserProfile")]
+    partial class AddUserProfile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -307,9 +310,6 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<int>("CitationCount")
                         .HasColumnType("int");
 
-                    b.Property<long?>("CompletionTokens")
-                        .HasColumnType("bigint");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -325,9 +325,6 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<bool>("IsAnonymous")
                         .HasColumnType("bit");
 
-                    b.Property<long>("LatencyMs")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("MaskedText")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -335,9 +332,6 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<string>("Model")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
-
-                    b.Property<long?>("PromptTokens")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("Provider")
                         .HasMaxLength(128)
@@ -347,9 +341,6 @@ namespace AskHR.Orchestrator.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
-
-                    b.Property<long?>("TotalTokens")
-                        .HasColumnType("bigint");
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -363,54 +354,6 @@ namespace AskHR.Orchestrator.Migrations
                     b.HasIndex("AgentId", "Channel", "CreatedAt");
 
                     b.ToTable("AuditEvents");
-                });
-
-            modelBuilder.Entity("AskHR.Orchestrator.Models.Audit.FeedbackEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("CommentMasked")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsAnonymous")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Rating")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("SeverityCandidate")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("Topic")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("MessageId");
-
-                    b.ToTable("FeedbackEvents");
                 });
 
             modelBuilder.Entity("AskHR.Orchestrator.Models.Chat.Conversation", b =>

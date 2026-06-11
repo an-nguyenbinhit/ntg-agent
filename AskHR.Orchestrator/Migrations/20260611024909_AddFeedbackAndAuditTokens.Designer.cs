@@ -4,6 +4,7 @@ using AskHR.Orchestrator.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AskHR.Orchestrator.Migrations
 {
     [DbContext(typeof(AgentDbContext))]
-    partial class AgentDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611024909_AddFeedbackAndAuditTokens")]
+    partial class AddFeedbackAndAuditTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -307,8 +310,8 @@ namespace AskHR.Orchestrator.Migrations
                     b.Property<int>("CitationCount")
                         .HasColumnType("int");
 
-                    b.Property<long?>("CompletionTokens")
-                        .HasColumnType("bigint");
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -336,8 +339,8 @@ namespace AskHR.Orchestrator.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<long?>("PromptTokens")
-                        .HasColumnType("bigint");
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("int");
 
                     b.Property<string>("Provider")
                         .HasMaxLength(128)
@@ -348,8 +351,8 @@ namespace AskHR.Orchestrator.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<long?>("TotalTokens")
-                        .HasColumnType("bigint");
+                    b.Property<int?>("TotalTokens")
+                        .HasColumnType("int");
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");

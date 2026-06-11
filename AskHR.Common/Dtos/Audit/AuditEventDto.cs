@@ -12,4 +12,8 @@ public sealed record AuditEventDto(
     string? Model,
     string? FallbackReason,
     int CitationCount,
-    DateTimeOffset CreatedAt);
+    long? PromptTokens = null,
+    long? CompletionTokens = null,
+    long? TotalTokens = null,
+    long LatencyMs = 0,
+    DateTimeOffset CreatedAt = default);

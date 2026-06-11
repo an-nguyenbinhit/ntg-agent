@@ -50,7 +50,7 @@ public sealed class WarmHandoffService : IWarmHandoffService
             null,
             $"{classification.Severity}:{classification.Reason}:{handoffId}",
             0,
-            DateTimeOffset.UtcNow), cancellationToken);
+            CreatedAt: DateTimeOffset.UtcNow), cancellationToken);
 
         return new WarmHandoffResult(
             handoffId,

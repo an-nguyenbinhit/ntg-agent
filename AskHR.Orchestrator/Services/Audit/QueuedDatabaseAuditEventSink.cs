@@ -13,6 +13,13 @@ public sealed class QueuedDatabaseAuditEventSink : BackgroundService, IAuditEven
             SingleReader = true,
             SingleWriter = false
         });
+
+    private readonly Channel<FeedbackEventDto> _feedbackQueue = Channel.CreateUnbounded<FeedbackEventDto>(
+        new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<QueuedDatabaseAuditEventSink> _logger;
 
@@ -34,7 +41,26 @@ public sealed class QueuedDatabaseAuditEventSink : BackgroundService, IAuditEven
         return Task.CompletedTask;
     }
 
+    public Task WriteFeedbackAsync(FeedbackEventDto feedbackEvent, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(feedbackEvent);
+
+        if (!_feedbackQueue.Writer.TryWrite(feedbackEvent))
+        {
+            _logger.LogError("Failed to enqueue feedback event {FeedbackId} for message:{MessageId}", feedbackEvent.FeedbackId, feedbackEvent.MessageId);
+        }
+
+        return Task.CompletedTask;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var processAuditTask = ProcessAuditEventsAsync(stoppingToken);
+        var processFeedbackTask = ProcessFeedbackEventsAsync(stoppingToken);
+        await Task.WhenAll(processAuditTask, processFeedbackTask);
+    }
+
+    private async Task ProcessAuditEventsAsync(CancellationToken stoppingToken)
     {
         await foreach (var auditEvent in _queue.Reader.ReadAllAsync(stoppingToken))
         {
@@ -56,6 +82,10 @@ public sealed class QueuedDatabaseAuditEventSink : BackgroundService, IAuditEven
                     Model = auditEvent.Model,
                     FallbackReason = auditEvent.FallbackReason,
                     CitationCount = auditEvent.CitationCount,
+                    PromptTokens = auditEvent.PromptTokens,
+                    CompletionTokens = auditEvent.CompletionTokens,
+                    TotalTokens = auditEvent.TotalTokens,
+                    LatencyMs = auditEvent.LatencyMs,
                     CreatedAt = auditEvent.CreatedAt
                 });
 
@@ -69,6 +99,43 @@ public sealed class QueuedDatabaseAuditEventSink : BackgroundService, IAuditEven
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to persist audit event {EventType} hash:{TextHash}", auditEvent.EventType, auditEvent.TextHash);
+            }
+        }
+    }
+
+    private async Task ProcessFeedbackEventsAsync(CancellationToken stoppingToken)
+    {
+        await foreach (var feedbackEvent in _feedbackQueue.Reader.ReadAllAsync(stoppingToken))
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AgentDbContext>();
+
+                dbContext.FeedbackEvents.Add(new FeedbackEvent
+                {
+                    Id = feedbackEvent.FeedbackId,
+                    MessageId = feedbackEvent.MessageId,
+                    UserId = feedbackEvent.UserId,
+                    IsAnonymous = feedbackEvent.IsAnonymous,
+                    Rating = feedbackEvent.Rating,
+                    CommentMasked = feedbackEvent.CommentMasked,
+                    Topic = feedbackEvent.Topic,
+                    SeverityCandidate = feedbackEvent.SeverityCandidate,
+                    Status = feedbackEvent.Status,
+                    CreatedAt = feedbackEvent.CreatedAt
+                });
+
+                await dbContext.SaveChangesAsync(stoppingToken);
+                _logger.LogInformation("Stored feedback event {FeedbackId} for message:{MessageId}", feedbackEvent.FeedbackId, feedbackEvent.MessageId);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to persist feedback event {FeedbackId}", feedbackEvent.FeedbackId);
             }
         }
     }

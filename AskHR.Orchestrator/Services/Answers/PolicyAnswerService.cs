@@ -453,7 +453,11 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             response.AuditMetadata.Model,
             response.FallbackReason,
             response.Citations.Count,
-            DateTimeOffset.UtcNow);
+            PromptTokens: response.AuditMetadata.PromptTokens,
+            CompletionTokens: response.AuditMetadata.CompletionTokens,
+            TotalTokens: response.AuditMetadata.TotalTokens,
+            LatencyMs: response.AuditMetadata.LatencyMs,
+            CreatedAt: DateTimeOffset.UtcNow);
 
         try
         {

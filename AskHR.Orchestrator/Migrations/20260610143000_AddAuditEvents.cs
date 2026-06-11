@@ -3,9 +3,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
+using AskHR.Orchestrator.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+
 namespace AskHR.Orchestrator.Migrations
 {
-    /// <inheritdoc />
+    [DbContext(typeof(AgentDbContext))]
+    [Migration("20260610143000_AddAuditEvents")]
     public partial class AddAuditEvents : Migration
     {
         /// <inheritdoc />

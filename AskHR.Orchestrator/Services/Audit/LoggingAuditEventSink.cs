@@ -30,4 +30,22 @@ public sealed class LoggingAuditEventSink : IAuditEventSink
 
         return Task.CompletedTask;
     }
+
+    public Task WriteFeedbackAsync(FeedbackEventDto feedbackEvent, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(feedbackEvent);
+
+        _logger.LogInformation(
+            "FeedbackEvent {FeedbackId} message:{MessageId} user:{UserId} anonymous:{IsAnonymous} rating:{Rating} topic:{Topic} severity:{SeverityCandidate} status:{Status}",
+            feedbackEvent.FeedbackId,
+            feedbackEvent.MessageId,
+            feedbackEvent.UserId,
+            feedbackEvent.IsAnonymous,
+            feedbackEvent.Rating,
+            feedbackEvent.Topic,
+            feedbackEvent.SeverityCandidate,
+            feedbackEvent.Status);
+
+        return Task.CompletedTask;
+    }
 }
