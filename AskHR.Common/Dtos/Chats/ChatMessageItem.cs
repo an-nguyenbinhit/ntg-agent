@@ -10,6 +10,7 @@ public class ChatMessageItem
     public string? ThinkingContent { get; set; }
     /// <summary>Duration of the reasoning phase in milliseconds. Null for Fast-mode or non-thinking messages.</summary>
     public int? ThinkingDurationMs { get; set; }
+    public List<string> SearchQueries { get; set; } = [];
     public ReactionType Reaction { get; set; }
     public string UserComment { get; set; } = string.Empty;
 }

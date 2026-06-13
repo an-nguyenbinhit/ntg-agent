@@ -17,6 +17,7 @@ using AskHR.Orchestrator.Services.DocumentAnalysis;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.Memory;
 using AskHR.Orchestrator.Services.Security;
+using System.Collections.Concurrent;
 using System.Text;
 using ChatRole = Microsoft.Extensions.AI.ChatRole;
 
@@ -119,6 +120,12 @@ public class AgentService
 
         await foreach (var item in InvokePromptStreamingInternalAsync(promptRequest, history, authorization, ocrDocuments, tokenUsageInfo, userId))
         {
+            if (item.ContentType == PromptContentType.SearchQuery)
+            {
+                yield return item;
+                continue;
+            }
+
             if (item.ContentType == PromptContentType.Thinking)
             {
                 // Record the start timestamp on the first thinking chunk
@@ -288,7 +295,12 @@ public class AgentService
 
             chatHistory.Add(userMessage);
 
-            AITool memorySearch = new KnowledgePlugin(_knowledgeService, authorization, promptRequest.AgentId).AsAITool();
+            var searchQueries = new ConcurrentQueue<string>();
+            AITool memorySearch = new KnowledgePlugin(
+                _knowledgeService,
+                authorization,
+                promptRequest.AgentId,
+                query => searchQueries.Enqueue(query)).AsAITool();
 
             var chatOptions = new ChatOptions
             {
@@ -297,6 +309,11 @@ public class AgentService
 
             await foreach (var update in agent.RunStreamingAsync(chatHistory, options: new ChatClientAgentRunOptions(chatOptions)))
             {
+                while (searchQueries.TryDequeue(out var searchQuery))
+                {
+                    yield return new PromptResponse(searchQuery, PromptContentType.SearchQuery);
+                }
+
                 foreach (var item in update.Contents)
                 {
                     if (item is TextReasoningContent reasoningContent)
@@ -308,6 +325,12 @@ public class AgentService
                         yield return new PromptResponse(textContent.Text);
                     }
                 }
+
+                while (searchQueries.TryDequeue(out var searchQuery))
+                {
+                    yield return new PromptResponse(searchQuery, PromptContentType.SearchQuery);
+                }
+
                 ExtractTokenUsage(update.RawRepresentation, tokenUsageInfo);
             }
         }

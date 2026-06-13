@@ -72,6 +72,78 @@ h1:focus {
     overflow-y: auto;
 }
 
+.chat-response .citation-sources {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.chat-response .citation-title {
+    margin-bottom: 0.5rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.chat-response .citation-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-left: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.chat-response .citation-item {
+    min-width: 0;
+}
+
+.chat-response .citation-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 999px;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    text-decoration: none;
+}
+
+.chat-response .citation-link:hover {
+    border-color: var(--bs-primary);
+    color: var(--bs-primary);
+    background: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+.chat-response .citation-link-disabled {
+    color: var(--bs-secondary-color);
+}
+
+.chat-response .citation-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(28rem, 62vw);
+}
+
+.chat-response .citation-index,
+.chat-response .citation-type {
+    flex-shrink: 0;
+    color: var(--bs-secondary-color);
+}
+
+.chat-response .citation-type {
+    padding-left: 0.25rem;
+    border-left: 1px solid var(--bs-border-color, #dee2e6);
+    font-size: 0.75rem;
+}
+
 /* ─── Dark mode: BootstrapBlazor Markdown (toastui-editor-contents) ─────────
    BootstrapBlazor renders chat messages WITHOUT Blazor's CSS isolation scope
    attribute, so scoped .razor.css rules never reach these elements.

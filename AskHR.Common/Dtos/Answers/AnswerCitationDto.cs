@@ -7,4 +7,6 @@ public sealed record AnswerCitationDto(
     string? SourcePath,
     string? SourceUrl,
     string Snippet,
-    double Relevance);
+    double Relevance,
+    Guid? AgentId = null,
+    Guid? DatabaseDocumentId = null);

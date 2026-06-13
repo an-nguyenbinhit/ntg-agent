@@ -9,6 +9,7 @@ using AskHR.Orchestrator.Services.Escalation;
 using AskHR.Orchestrator.Services.Knowledge;
 using AskHR.Orchestrator.Services.ModelRouting;
 using AskHR.Orchestrator.Models.Agents;
+using AskHR.Orchestrator.Models.Chat;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
@@ -90,7 +91,29 @@ public class PolicyAnswerServiceTests
     [Test]
     public async Task AnswerAsync_WithGroundingCitations_CallsAnswerGenerationCapability()
     {
-        var request = new AskHrRequest(Guid.NewGuid(), "Annual leave policy?");
+        var userId = Guid.NewGuid();
+        var conversation = new Conversation
+        {
+            Id = Guid.NewGuid(),
+            Name = "New Conversation",
+            UserId = userId
+        };
+        _context.Conversations.Add(conversation);
+        await _context.SaveChangesAsync();
+
+        var request = new AskHrRequest(Guid.NewGuid(), "Annual leave policy?", ThreadId: conversation.Id.ToString());
+        var databaseDocumentId = Guid.NewGuid();
+        _context.Documents.Add(new AskHR.Orchestrator.Models.Documents.Document
+        {
+            Id = databaseDocumentId,
+            AgentId = request.AgentId,
+            Name = "leave-policy.md",
+            KnowledgeDocId = "doc-1",
+            CreatedByUserId = userId,
+            UpdatedByUserId = userId
+        });
+        await _context.SaveChangesAsync();
+
         _knowledgeService
             .Setup(x => x.SearchAsync(request.Question, request.AgentId, It.IsAny<AuthorizationContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(BuildSearchResult());
@@ -101,11 +124,26 @@ public class PolicyAnswerServiceTests
                     "Employees have annual leave according to the cited policy [1].",
                     new ModelRouteDto(ModelCapability.AnswerGeneration, "AzureOpenAI", "gpt-4.1-mini", RouteName: "answer"))));
 
-        var response = await _service.AnswerAsync(request, AuthorizationContext.Anonymous());
+        var response = await _service.AnswerAsync(request, new AuthorizationContext
+        {
+            UserId = userId,
+            IsAnonymous = false,
+            AllowedTags = ["hr-policy"],
+            SensitivityLevel = "Internal"
+        });
 
         Assert.That(response.FallbackReason, Is.Null);
         Assert.That(response.Citations, Has.Count.EqualTo(1));
+        Assert.That(response.Citations[0].AgentId, Is.EqualTo(request.AgentId));
+        Assert.That(response.Citations[0].DatabaseDocumentId, Is.EqualTo(databaseDocumentId));
         Assert.That(response.AnswerText, Does.Contain("[1]"));
+        Assert.That(response.AnswerText, Does.Contain("citation-sources"));
+        Assert.That(response.AnswerText, Does.Contain($"/api/documents/download/{request.AgentId:D}/{databaseDocumentId:D}"));
+
+        var storedAssistantMessage = await _context.ChatMessages
+            .Where(x => x.ConversationId == conversation.Id && x.Role.Value == "assistant")
+            .SingleAsync();
+        Assert.That(storedAssistantMessage.Content, Is.EqualTo(response.AnswerText));
         _modelGateway.Verify(x => x.StreamCompleteAsync(
             It.Is<ModelCompletionRequest>(r => r.Capability == ModelCapability.AnswerGeneration && r.AgentId == request.AgentId),
             It.IsAny<CancellationToken>()), Times.Once);

@@ -5,12 +5,14 @@ using Moq;
 using AskHR.Orchestrator.Controllers;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Services.Knowledge;
+using AskHR.Orchestrator.Services.Security;
 using AskHR.Orchestrator.Models.Documents;
 using AskHR.ServiceDefaults.Logging;
 using AskHR.ServiceDefaults.Logging.Metrics;
 using System.Security.Claims;
 using System.Text;
 using AskHR.Common.Dtos.Documents;
+using AskHR.Common.Dtos.Security;
 using Microsoft.Extensions.Logging;
 namespace AskHR.Orchestrator.Tests.Controllers;
 [TestFixture]
@@ -20,8 +22,11 @@ public class DocumentsControllerTests
     private Mock<IKnowledgeService> _mockKnowledgeService;
     private Mock<ILogger<DocumentsController>> _mockLogger;
     private Mock<IMetricsCollector> _mockMetrics;
+    private Mock<IIdentityResolver> _mockIdentityResolver;
+    private Mock<IRbacService> _mockRbacService;
     private IDocumentIngestionService _ingestionService;
     private DocumentsController _controller;
+    private DocumentsDownloadController _downloadController;
     private Guid _testUserId;
     private Guid _testAgentId;
     [SetUp]
@@ -34,6 +39,8 @@ public class DocumentsControllerTests
         _mockKnowledgeService = new Mock<IKnowledgeService>();
         _mockLogger = new Mock<ILogger<DocumentsController>>();
         _mockMetrics = new Mock<IMetricsCollector>();
+        _mockIdentityResolver = new Mock<IIdentityResolver>();
+        _mockRbacService = new Mock<IRbacService>();
         var mockScope = new Mock<IDisposable>();
         var mockTimer = new Mock<IDisposable>();
         _mockMetrics.Setup(x => x.StartTimer(It.IsAny<string>(), It.IsAny<(string, string)[]>())).Returns(mockTimer.Object);
@@ -44,8 +51,30 @@ public class DocumentsControllerTests
             new Claim(ClaimTypes.NameIdentifier, _testUserId.ToString()),
             new Claim(ClaimTypes.Role, "Admin")
         ], "mock"));
+        _mockIdentityResolver
+            .Setup(x => x.ResolveUserIdAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_testUserId);
+        _mockRbacService
+            .Setup(x => x.ResolveAsync(_testUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationContext
+            {
+                UserId = _testUserId,
+                Roles = ["Admin"],
+                SensitivityLevel = "Confidential"
+            });
         _ingestionService = new DocumentIngestionService(_context, _mockKnowledgeService.Object, Mock.Of<ILogger<DocumentIngestionService>>());
         _controller = new DocumentsController(_context, _mockKnowledgeService.Object, _ingestionService, _mockLogger.Object, _mockMetrics.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = user }
+            }
+        };
+        _downloadController = new DocumentsDownloadController(
+            _context,
+            _mockKnowledgeService.Object,
+            _mockIdentityResolver.Object,
+            _mockRbacService.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -946,7 +975,7 @@ public class DocumentsControllerTests
     public async Task GetDocumentById_WhenDocumentNotFound_ReturnsNotFound()
     {
         // Act
-        var result = await _controller.GetDocumentById(Guid.NewGuid(), _testAgentId, CancellationToken.None);
+        var result = await _downloadController.GetDocumentById(_testAgentId, Guid.NewGuid(), CancellationToken.None);
         // Assert
         Assert.That(result, Is.TypeOf<NotFoundResult>());
     }
@@ -965,7 +994,7 @@ public class DocumentsControllerTests
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
         // Act
-        var result = await _controller.GetDocumentById(document.Id, _testAgentId, CancellationToken.None);
+        var result = await _downloadController.GetDocumentById(_testAgentId, document.Id, CancellationToken.None);
         // Assert
         Assert.That(result, Is.TypeOf<NotFoundObjectResult>());
         var notFoundResult = result as NotFoundObjectResult;
@@ -989,12 +1018,129 @@ public class DocumentsControllerTests
         // In practice, you might want to extract the HTTP logic to a separate service
         // For now, we'll test the URL validation part
         // Act
-        var result = await _controller.GetDocumentById(document.Id, _testAgentId, CancellationToken.None);
+        var result = await _downloadController.GetDocumentById(_testAgentId, document.Id, CancellationToken.None);
         // Assert
         // This would normally test the HTTP download, but since we can't easily mock HttpClient
         // we're just verifying the method executes without null reference exceptions
         Assert.That(result, Is.Not.Null);
     }
+
+    [Test]
+    public async Task GetDocumentById_WhenNonAdminHasDocumentTagAccess_AllowsDownloadFlow()
+    {
+        // Arrange
+        var tagId = Guid.NewGuid();
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, _testUserId.ToString())
+        ], "mock"));
+        _downloadController.ControllerContext.HttpContext.User = user;
+        _mockRbacService
+            .Setup(x => x.ResolveAsync(_testUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationContext
+            {
+                UserId = _testUserId,
+                AllowedTags = [tagId.ToString()],
+                SensitivityLevel = "Internal"
+            });
+
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "test.txt",
+            AgentId = _testAgentId,
+            Type = DocumentType.File,
+            KnowledgeDocId = null,
+            ApprovalStatus = ApprovalStatus.Approved,
+            DocumentTags = new List<DocumentTag>
+            {
+                new DocumentTag { TagId = tagId }
+            }
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _downloadController.GetDocumentById(_testAgentId, document.Id, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<NotFoundObjectResult>());
+        Assert.That(((NotFoundObjectResult)result).Value, Is.EqualTo("No knowledge document id."));
+    }
+
+    [Test]
+    public async Task GetDocumentById_WhenNonAdminLacksDocumentTagAccess_ReturnsForbid()
+    {
+        // Arrange
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, _testUserId.ToString())
+        ], "mock"));
+        _downloadController.ControllerContext.HttpContext.User = user;
+        _mockRbacService
+            .Setup(x => x.ResolveAsync(_testUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthorizationContext
+            {
+                UserId = _testUserId,
+                AllowedTags = [Guid.NewGuid().ToString()],
+                SensitivityLevel = "Internal"
+            });
+
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "test.txt",
+            AgentId = _testAgentId,
+            Type = DocumentType.File,
+            KnowledgeDocId = null,
+            ApprovalStatus = ApprovalStatus.Approved,
+            DocumentTags = new List<DocumentTag>
+            {
+                new DocumentTag { TagId = Guid.NewGuid() }
+            }
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _downloadController.GetDocumentById(_testAgentId, document.Id, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<ForbidResult>());
+    }
+
+    [Test]
+    public async Task GetDocumentById_WhenUserCannotBeResolved_ReturnsUnauthorized()
+    {
+        // Arrange
+        _downloadController.ControllerContext.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
+        _mockIdentityResolver
+            .Setup(x => x.ResolveUserIdAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "test.txt",
+            AgentId = _testAgentId,
+            Type = DocumentType.File,
+            KnowledgeDocId = null,
+            ApprovalStatus = ApprovalStatus.Approved,
+            DocumentTags = new List<DocumentTag>
+            {
+                new DocumentTag { TagId = Guid.NewGuid() }
+            }
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _downloadController.GetDocumentById(_testAgentId, document.Id, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<UnauthorizedResult>());
+    }
+
     private static FormFile CreateTestFile(string fileName, string content)
     {
         var bytes = Encoding.UTF8.GetBytes(content);

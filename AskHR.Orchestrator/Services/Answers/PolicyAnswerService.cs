@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using AskHR.Common.Dtos.Answers;
@@ -164,12 +165,17 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         }
 
         var selectedSkill = await ResolveSkillAsync(request, cancellationToken);
+        yield return new AskHrStreamEvent(AskHrStreamEventType.SearchQuery, Content: request.Question);
+
         var searchResult = await _knowledgeService.SearchAsync(request.Question, request.AgentId, authorization, cancellationToken);
-        var citations = ExtractCitations(searchResult)
+        var citations = await AddDocumentDownloadMetadataAsync(
+            request.AgentId,
+            ExtractCitations(searchResult)
             .Where(x => x.Relevance >= _options.Value.MinRelevance)
             .OrderByDescending(x => x.Relevance)
             .Take(Math.Max(1, _options.Value.MaxFacts))
-            .ToList();
+            .ToList(),
+            cancellationToken);
         var classification = _severityClassifier.Classify(request, citations);
 
         if (citations.Count == 0)
@@ -498,13 +504,14 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
             CreatedAt = now,
             UpdatedAt = now
         };
+        var persistedAnswerText = AppendCitationAppendixIfMissing(response.AnswerText, response.Citations);
         var assistantMessage = new PChatMessage
         {
             UserId = authorization.UserId,
             Conversation = conversation,
             ConversationId = conversation.Id,
             AgentId = request.AgentId,
-            Content = response.AnswerText,
+            Content = persistedAnswerText,
             Role = ChatRole.Assistant,
             CreatedAt = now,
             UpdatedAt = now
@@ -521,6 +528,7 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
 
         return response with
         {
+            AnswerText = persistedAnswerText,
             ConversationId = conversation.Id,
             MessageId = assistantMessage.Id
         };
@@ -598,6 +606,155 @@ public sealed class PolicyAnswerService : IPolicyAnswerService
         => tags.ContainsKey(name)
             ? tags[name].FirstOrDefault()
             : null;
+
+    private static string AppendCitationAppendixIfMissing(string answerText, IReadOnlyList<AnswerCitationDto> citations)
+    {
+        if (citations.Count == 0 || answerText.Contains("citation-sources", StringComparison.OrdinalIgnoreCase))
+        {
+            return answerText;
+        }
+
+        return answerText + BuildCitationAppendix(citations);
+    }
+
+    private static string BuildCitationAppendix(IReadOnlyList<AnswerCitationDto> citations)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine();
+        builder.AppendLine();
+        builder.AppendLine("<section class=\"citation-sources\" aria-label=\"Sources\">");
+        builder.AppendLine("<div class=\"citation-title\">Sources</div>");
+        builder.AppendLine("<ol class=\"citation-list\">");
+
+        var sources = citations
+            .Select((citation, index) => new
+            {
+                Citation = citation,
+                Number = index + 1,
+                Url = BuildCitationUrl(citation)
+            })
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Url) ? x.Citation.DocumentName : x.Url, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        foreach (var source in sources)
+        {
+            var citation = source.Citation;
+            var documentName = WebUtility.HtmlEncode(citation.DocumentName);
+            var sourceType = WebUtility.HtmlEncode(citation.SourceType);
+
+            builder.Append("<li class=\"citation-item\">");
+            if (!string.IsNullOrWhiteSpace(source.Url))
+            {
+                builder.Append("<a class=\"citation-link\" href=\"")
+                    .Append(WebUtility.HtmlEncode(source.Url))
+                    .Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .Append("<span class=\"citation-index\">[")
+                    .Append(source.Number)
+                    .Append("]</span>")
+                    .Append("<span class=\"citation-name\">")
+                    .Append(documentName)
+                    .Append("</span>")
+                    .Append("<span class=\"citation-type\">")
+                    .Append(sourceType)
+                    .Append("</span>")
+                    .Append("<i class=\"bi bi-box-arrow-up-right\"></i>")
+                    .Append("</a>");
+            }
+            else
+            {
+                builder.Append("<span class=\"citation-link citation-link-disabled\">")
+                    .Append("<span class=\"citation-index\">[")
+                    .Append(source.Number)
+                    .Append("]</span>")
+                    .Append("<span class=\"citation-name\">")
+                    .Append(documentName)
+                    .Append("</span>")
+                    .Append("<span class=\"citation-type\">")
+                    .Append(sourceType)
+                    .Append("</span>")
+                    .Append("</span>");
+            }
+
+            builder.AppendLine("</li>");
+        }
+
+        builder.AppendLine("</ol>");
+        builder.AppendLine("</section>");
+        return builder.ToString();
+    }
+
+    private static string? BuildCitationUrl(AnswerCitationDto citation)
+    {
+        if (!string.IsNullOrWhiteSpace(citation.SourceUrl)
+            && Uri.TryCreate(citation.SourceUrl, UriKind.Absolute, out var sourceUri)
+            && (sourceUri.Scheme == Uri.UriSchemeHttp || sourceUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return sourceUri.ToString();
+        }
+
+        if (citation.AgentId is Guid agentId && citation.DatabaseDocumentId is Guid documentId)
+        {
+            return $"/api/documents/download/{agentId:D}/{documentId:D}";
+        }
+
+        return null;
+    }
+
+    private async Task<List<AnswerCitationDto>> AddDocumentDownloadMetadataAsync(
+        Guid agentId,
+        List<AnswerCitationDto> citations,
+        CancellationToken cancellationToken)
+    {
+        if (citations.Count == 0)
+        {
+            return citations;
+        }
+
+        var knowledgeDocumentIds = citations
+            .Select(x => x.DocumentId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (knowledgeDocumentIds.Count == 0)
+        {
+            return citations
+                .Select(x => x with { AgentId = agentId })
+                .ToList();
+        }
+
+        var documents = await _context.Documents
+            .AsNoTracking()
+            .Where(x => x.AgentId == agentId
+                && x.KnowledgeDocId != null
+                && knowledgeDocumentIds.Contains(x.KnowledgeDocId))
+            .Select(x => new { x.KnowledgeDocId, x.Id })
+            .ToListAsync(cancellationToken);
+
+        var documentsByKnowledgeId = documents
+            .Where(x => x.KnowledgeDocId is not null)
+            .GroupBy(x => x.KnowledgeDocId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First().Id, StringComparer.OrdinalIgnoreCase);
+
+        return citations
+            .Select(citation =>
+            {
+                Guid? databaseDocumentId = null;
+                if (citation.DocumentId is not null
+                    && documentsByKnowledgeId.TryGetValue(citation.DocumentId, out var mappedDocumentId))
+                {
+                    databaseDocumentId = mappedDocumentId;
+                }
+
+                return citation with
+                {
+                    AgentId = agentId,
+                    DatabaseDocumentId = databaseDocumentId
+                };
+            })
+            .ToList();
+    }
 
     private string TrimSnippet(string value)
     {

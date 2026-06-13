@@ -5,6 +5,7 @@
 @using AskHR.Common.Dtos.Agents
 @using AskHR.Common.Dtos.AnonymousSessions
 @using AskHR.WebClient.Client.Components.Shared
+@using System.Net
 @using System.Text
 @inject ChatClient ChatClient
 @inject NavigationManager Navigation
@@ -39,6 +40,17 @@ else if (ConversationId.HasValue)
             if (item.IsAssistant)
             {
                 <div class="p-2 w-100">
+                    @if (item.SearchQueries.Count > 0)
+                    {
+                        <div class="search-query-status mb-2">
+                            <i class="bi bi-search"></i>
+                            <span>Đang tìm kiếm tài liệu với từ khóa:</span>
+                            @foreach (var searchQuery in item.SearchQueries.TakeLast(3))
+                            {
+                                <span class="search-query-chip">@searchQuery</span>
+                            }
+                        </div>
+                    }
                     @if (!string.IsNullOrEmpty(item.ThinkingContent) || (isThinking && item == chatHistory.LastOrDefault(m => m.IsAssistant)))
                     {
                         var isCurrentlyThinking = isThinking && item == chatHistory.LastOrDefault(m => m.IsAssistant);
@@ -440,7 +452,7 @@ else
         chatHistory.Add(new ChatMessageItem { IsAssistant = false, IsUser = true, Message = query });
 
 
-        var response = new ChatMessageItem { IsAssistant = true, IsUser = false, Message = $"🔍 Đang tìm kiếm tài liệu với từ khóa: \"{query}\"..." };
+        var response = new ChatMessageItem { IsAssistant = true, IsUser = false, Message = string.Empty };
         chatHistory.Add(response);
         userInput = string.Empty;
         isSending = true;
@@ -538,6 +550,12 @@ else
 
         await foreach (var streamEvent in ChatClient.InvokeAskHrStreamAsync(request))
         {
+            if (streamEvent.Type == AskHrStreamEventType.SearchQuery)
+            {
+                AddSearchQuery(response, streamEvent.Content);
+                continue;
+            }
+
             if (streamEvent.Type == AskHrStreamEventType.Citation && streamEvent.Citation is not null)
             {
                 citations.Add(streamEvent.Citation);
@@ -570,6 +588,9 @@ else
             if (streamEvent.Type == AskHrStreamEventType.Done && streamEvent.Answer is not null)
             {
                 response.Id = streamEvent.Answer.MessageId ?? streamEvent.MessageId ?? response.Id;
+                var finalCitations = streamEvent.Answer.Citations.Count > 0
+                    ? streamEvent.Answer.Citations
+                    : citations;
                 if (string.IsNullOrWhiteSpace(response.Message))
                 {
                     response.Message = streamEvent.Answer.AnswerText;
@@ -580,7 +601,7 @@ else
                     isConversationFrozen = true;
                 }
 
-                response.Message += BuildCitationAppendix(citations);
+                response.Message = AppendCitationAppendixIfMissing(response.Message, finalCitations);
                 await UpdateLiveMarkdownAsync(response.Message);
             }
         }
@@ -600,6 +621,12 @@ else
 
         await foreach (var item in ChatClient.InvokeStreamAsync(request))
         {
+            if (item.ContentType == PromptContentType.SearchQuery)
+            {
+                AddSearchQuery(response, item.Content);
+                continue;
+            }
+
             if (item.ContentType == PromptContentType.Thinking)
             {
                 thinkingStartedAt ??= DateTime.UtcNow;
@@ -631,6 +658,23 @@ else
         StateHasChanged();
     }
 
+    private void AddSearchQuery(ChatMessageItem response, string? query)
+    {
+        var normalizedQuery = string.Join(' ', (query ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return;
+        }
+
+        if (response.SearchQueries.Count == 0 ||
+            !string.Equals(response.SearchQueries[^1], normalizedQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            response.SearchQueries.Add(normalizedQuery);
+        }
+
+        StateHasChanged();
+    }
+
     private async Task UpdateLiveMarkdownAsync(string value)
     {
         await Task.Delay(1);
@@ -651,22 +695,93 @@ else
         var builder = new StringBuilder();
         builder.AppendLine();
         builder.AppendLine();
-        builder.AppendLine("Sources:");
-        for (var i = 0; i < citations.Count; i++)
-        {
-            var citation = citations[i];
-            builder.Append("- [")
-                .Append(i + 1)
-                .Append("] ")
-                .Append(citation.DocumentName);
-            if (!string.IsNullOrWhiteSpace(citation.SourceUrl))
+        builder.AppendLine("<section class=\"citation-sources\" aria-label=\"Sources\">");
+        builder.AppendLine("<div class=\"citation-title\">Sources</div>");
+        builder.AppendLine("<ol class=\"citation-list\">");
+
+        var sources = citations
+            .Select((citation, index) => new
             {
-                builder.Append(" - ").Append(citation.SourceUrl);
+                Citation = citation,
+                Number = index + 1,
+                Url = BuildCitationUrl(citation)
+            })
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Url) ? x.Citation.DocumentName : x.Url, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        foreach (var source in sources)
+        {
+            var citation = source.Citation;
+            var documentName = WebUtility.HtmlEncode(citation.DocumentName);
+            var sourceType = WebUtility.HtmlEncode(citation.SourceType);
+
+            builder.Append("<li class=\"citation-item\">");
+            if (!string.IsNullOrWhiteSpace(source.Url))
+            {
+                builder.Append("<a class=\"citation-link\" href=\"")
+                    .Append(WebUtility.HtmlEncode(source.Url))
+                    .Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .Append("<span class=\"citation-index\">[")
+                    .Append(source.Number)
+                    .Append("]</span>")
+                    .Append("<span class=\"citation-name\">")
+                    .Append(documentName)
+                    .Append("</span>")
+                    .Append("<span class=\"citation-type\">")
+                    .Append(sourceType)
+                    .Append("</span>")
+                    .Append("<i class=\"bi bi-box-arrow-up-right\"></i>")
+                    .Append("</a>");
             }
-            builder.AppendLine();
+            else
+            {
+                builder.Append("<span class=\"citation-link citation-link-disabled\">")
+                    .Append("<span class=\"citation-index\">[")
+                    .Append(source.Number)
+                    .Append("]</span>")
+                    .Append("<span class=\"citation-name\">")
+                    .Append(documentName)
+                    .Append("</span>")
+                    .Append("<span class=\"citation-type\">")
+                    .Append(sourceType)
+                    .Append("</span>")
+                    .Append("</span>");
+            }
+
+            builder.AppendLine("</li>");
         }
 
+        builder.AppendLine("</ol>");
+        builder.AppendLine("</section>");
         return builder.ToString();
+    }
+
+    private static string AppendCitationAppendixIfMissing(string answerText, IReadOnlyList<AnswerCitationDto> citations)
+    {
+        if (citations.Count == 0 || answerText.Contains("citation-sources", StringComparison.OrdinalIgnoreCase))
+        {
+            return answerText;
+        }
+
+        return answerText + BuildCitationAppendix(citations);
+    }
+
+    private static string? BuildCitationUrl(AnswerCitationDto citation)
+    {
+        if (!string.IsNullOrWhiteSpace(citation.SourceUrl)
+            && Uri.TryCreate(citation.SourceUrl, UriKind.Absolute, out var sourceUri)
+            && (sourceUri.Scheme == Uri.UriSchemeHttp || sourceUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return sourceUri.ToString();
+        }
+
+        if (citation.AgentId is Guid agentId && citation.DatabaseDocumentId is Guid documentId)
+        {
+            return $"/api/documents/download/{agentId:D}/{documentId:D}";
+        }
+
+        return null;
     }
 
     private static bool IsHandoffMessage(string value) =>

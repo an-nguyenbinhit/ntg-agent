@@ -4,7 +4,8 @@ namespace AskHR.Common.Dtos.Chats;
 public enum PromptContentType
 {
     Text = 0,
-    Thinking = 1
+    Thinking = 1,
+    SearchQuery = 2
 }
 
 /// <summary>

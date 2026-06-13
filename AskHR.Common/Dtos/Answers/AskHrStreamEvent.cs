@@ -5,11 +5,12 @@ namespace AskHR.Common.Dtos.Answers;
 [JsonConverter(typeof(JsonStringEnumConverter<AskHrStreamEventType>))]
 public enum AskHrStreamEventType
 {
-    Token,
-    Citation,
-    Done,
-    Error,
-    Handoff
+    Token = 0,
+    Citation = 1,
+    Done = 2,
+    Error = 3,
+    Handoff = 4,
+    SearchQuery = 5
 }
 
 public sealed record AskHrStreamEvent(
