@@ -175,6 +175,8 @@ You are a helpful AI assistant specialized in customer support. Always be polite
                             <option value="500">Medium (500 tokens)</option>
                             <option value="1000">Long (1000 tokens)</option>
                             <option value="2000">Very Long (2000 tokens)</option>
+                            <option value="4096">Extra Long (4096 tokens)</option>
+                            <option value="8192">Maximum (8192 tokens)</option>
                         </select>
                     </div>
 
@@ -282,6 +284,16 @@ You are a helpful AI assistant specialized in customer support. Always be polite
 
     private readonly string defaultPrompt = "You are a helpful AI assistant. Please provide accurate and helpful responses to user queries.";
 
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (AgentDetail != null)
+        {
+            temperature = AgentDetail.CreativityCap;
+            maxTokens = AgentDetail.MaxTokens;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -345,8 +357,11 @@ You are a helpful AI assistant specialized in customer support. Always be polite
     {
         try
         {
-            // TODO: Implement API call to save advanced settings
-            await Task.Delay(500);
+            isSaving = true;
+            AgentDetail.CreativityCap = (float)temperature;
+            AgentDetail.MaxTokens = maxTokens;
+            // Mode is already two-way bound to AgentDetail.Mode
+            await AgentClient.UpdateAgent(AgentDetail);
             statusMessage = "Advanced settings saved successfully!";
             isSuccess = true;
             
@@ -357,6 +372,10 @@ You are a helpful AI assistant specialized in customer support. Always be polite
         {
             statusMessage = $"Error saving settings: {ex.Message}";
             isSuccess = false;
+        }
+        finally
+        {
+            isSaving = false;
         }
     }
 }

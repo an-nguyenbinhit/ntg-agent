@@ -142,6 +142,7 @@ public class AgentAdminController : ControllerBase
 
         agent.McpServer = updatedAgent.McpServer;
         agent.Mode = updatedAgent.Mode;
+        agent.MaxTokens = updatedAgent.MaxTokens;
         agent.UpdatedAt = DateTime.UtcNow;
         agent.UpdatedByUserId = userId;
         await _agentDbContext.SaveChangesAsync();
@@ -357,6 +358,7 @@ public class AgentAdminController : ControllerBase
             ProviderApiKey = updatedAgent.ProviderApiKey ?? string.Empty,
             ProviderModelName = updatedAgent.ProviderModelName ?? string.Empty,
             Mode = updatedAgent.Mode,
+            MaxTokens = updatedAgent.MaxTokens,
             
             // Persona Configurations
             Tone = updatedAgent.Tone ?? string.Empty,

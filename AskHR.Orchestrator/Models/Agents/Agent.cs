@@ -44,6 +44,8 @@ public class Agent
     /// <summary>Whether this agent uses Fast or Thinking (reasoning) mode.</summary>
     public AgentMode Mode { get; set; } = AgentMode.Fast;
 
+    public int MaxTokens { get; set; } = 2000;
+
     public string? McpServer { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }

@@ -115,6 +115,8 @@ public class AgentFactory : IAgentFactory
                 .UseOpenTelemetry(sourceName: "AskHR.Orchestrator", configure: (cfg) => cfg.EnableSensitiveData = true)
                 .ConfigureOptions(o =>
                 {
+                    o.Temperature = agent.CreativityCap;
+                    o.MaxOutputTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
                     o.Reasoning = new()
                     {
                         Effort = ReasoningEffort.Medium,
@@ -134,6 +136,11 @@ public class AgentFactory : IAgentFactory
                 .AsBuilder()
                 .UseFunctionInvocation()
                 .UseOpenTelemetry(sourceName: "AskHR.Orchestrator", configure: (cfg) => cfg.EnableSensitiveData = true)
+                .ConfigureOptions(o =>
+                {
+                    o.Temperature = agent.CreativityCap;
+                    o.MaxOutputTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
+                })
                 .Build();
         }
 
@@ -151,10 +158,13 @@ public class AgentFactory : IAgentFactory
             // Requires a compatible Claude model (e.g. claude-3-7-sonnet or later).
             // The Anthropic MEA adapter reads RawRepresentationFactory to build the raw MessageCreateParams,
             // which is the only supported way to pass the Thinking configuration.
-            // budgetTokens controls max reasoning tokens (must be =1024 and less than MaxTokens).
+            // budgetTokens controls max reasoning tokens (must be >=1024 and less than MaxTokens).
             // See: https://github.com/microsoft/agent-framework/blob/main/dotnet/samples/02-agents/AgentWithAnthropic/Agent_Anthropic_Step02_Reasoning/Program.cs
-            const int maxTokens = 4096;
-            const int thinkingTokens = 2048;
+            int actualMaxTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
+            if (actualMaxTokens <= 1024) actualMaxTokens = 4096; // Enforce minimum for Thinking
+            int thinkingTokens = Math.Min(2048, actualMaxTokens - 512);
+            if (thinkingTokens < 1024) thinkingTokens = 1024;
+            
             chatClient = new AnthropicClient(new ClientOptions { ApiKey = agent.ProviderApiKey })
                 .AsIChatClient(defaultModelId: agent.ProviderModelName)
                 .AsBuilder()
@@ -165,7 +175,8 @@ public class AgentFactory : IAgentFactory
                     o.RawRepresentationFactory = _ => new MessageCreateParams
                     {
                         Model = agent.ProviderModelName,
-                        MaxTokens = o.MaxOutputTokens ?? maxTokens,
+                        MaxTokens = actualMaxTokens,
+                        Temperature = agent.CreativityCap,
                         Messages = [],
                         Thinking = new ThinkingConfigParam(new ThinkingConfigEnabled(budgetTokens: thinkingTokens))
                     };
@@ -179,6 +190,11 @@ public class AgentFactory : IAgentFactory
                 .AsBuilder()
                 .UseFunctionInvocation()
                 .UseOpenTelemetry(sourceName: "AskHR.Orchestrator", configure: (cfg) => cfg.EnableSensitiveData = true)
+                .ConfigureOptions(o =>
+                {
+                    o.Temperature = agent.CreativityCap;
+                    o.MaxOutputTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
+                })
                 .Build();
         }
 
@@ -205,6 +221,8 @@ public class AgentFactory : IAgentFactory
                 .UseOpenTelemetry(sourceName: "AskHR.Orchestrator", configure: (cfg) => cfg.EnableSensitiveData = true)
                 .ConfigureOptions(o =>
                 {
+                    o.Temperature = agent.CreativityCap;
+                    o.MaxOutputTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
                     o.RawRepresentationFactory = _ => new CreateResponseOptions
                     {
                         ReasoningOptions = new ResponseReasoningOptions
@@ -227,6 +245,11 @@ public class AgentFactory : IAgentFactory
                 .AsBuilder()
                 .UseFunctionInvocation()
                 .UseOpenTelemetry(sourceName: "AskHR.Orchestrator", configure: (cfg) => cfg.EnableSensitiveData = true)
+                .ConfigureOptions(o =>
+                {
+                    o.Temperature = agent.CreativityCap;
+                    o.MaxOutputTokens = agent.MaxTokens > 0 ? agent.MaxTokens : 4096;
+                })
                 .Build();
         }
 

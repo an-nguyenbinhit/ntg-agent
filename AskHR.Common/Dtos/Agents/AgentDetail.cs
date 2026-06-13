@@ -39,6 +39,8 @@ public class AgentDetail
     /// <summary>Determines whether this agent uses Fast or Thinking (reasoning) mode.</summary>
     public AgentMode Mode { get; set; } = AgentMode.Fast;
 
+    public int MaxTokens { get; set; } = 2000;
+
     public string ToolCount { get; set; } = "0";
 
     public AgentDetail()
