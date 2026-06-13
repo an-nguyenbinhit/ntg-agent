@@ -511,3 +511,87 @@
     background-color: rgba(var(--bs-primary-rgb), .1);
     color: var(--bs-primary);
 }
+
+/* --- Modern Redesign Overrides --- */
+
+/* User Messages */
+.text-end span {
+    background: linear-gradient(135deg, var(--bs-primary), #4f46e5) !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(var(--bs-primary-rgb), 0.3) !important;
+    border-radius: 18px 18px 0px 18px !important;
+    padding: 12px 18px !important;
+    font-weight: 500;
+}
+
+/* Assistant Messages */
+.chat-response {
+    background: var(--bs-body-bg) !important;
+    border: 1px solid rgba(150, 150, 150, 0.2) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+    border-radius: 18px 18px 18px 0px !important;
+    padding: 16px !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-bs-theme=dark] .chat-response {
+    background: rgba(30, 41, 59, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+}
+
+.chat-response:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-bs-theme=dark] .chat-response:hover {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Floating Input Dock */
+.chat-input-box {
+    background: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(150, 150, 150, 0.2) !important;
+    border-radius: 50px !important;
+    padding: 8px 16px !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1) !important;
+    margin-bottom: 24px !important;
+    transition: all 0.3s ease !important;
+}
+
+[data-bs-theme=dark] .chat-input-box {
+    background: rgba(15, 23, 42, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+.chat-input-box:focus-within {
+    box-shadow: 0 10px 40px rgba(var(--bs-primary-rgb), 0.2) !important;
+    border-color: var(--bs-primary) !important;
+    transform: translateY(-2px);
+}
+
+.chat-input-field {
+    background: transparent !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+}
+
+/* Micro-animations */
+.chat-input-icon-btn, .speech-btn, .chat-actions .btn {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease !important;
+}
+
+.chat-input-icon-btn:hover, .speech-btn:hover {
+    transform: scale(1.15) !important;
+    background-color: rgba(var(--bs-primary-rgb), 0.1) !important;
+    color: var(--bs-primary) !important;
+}
+
+.chat-actions .btn:hover {
+    transform: scale(1.1) !important;
+    color: var(--bs-primary) !important;
+}

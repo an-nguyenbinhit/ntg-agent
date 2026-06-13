@@ -39,7 +39,7 @@ else if (ConversationId.HasValue)
         {
             if (item.IsAssistant)
             {
-                <div class="p-2 w-100">
+                <div class="p-2 w-100 animate-slide-up">
                     @if (item.SearchQueries.Count > 0)
                     {
                         <div class="search-query-status mb-2">
@@ -102,10 +102,10 @@ else if (ConversationId.HasValue)
             }
             else if (item.IsUser)
             {
-                <div class="text-end p-2 w-100">
+                <div class="text-end p-2 w-100 animate-slide-up">
                     @if (!string.IsNullOrEmpty(item.Message))
                     {
-                        <span class="text-white bg-primary p-2 rounded rounded-4">
+                        <span class="text-white p-2">
                             @item.Message
                         </span>
                     }
