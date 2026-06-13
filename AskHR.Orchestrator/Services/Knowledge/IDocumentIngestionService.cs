@@ -31,6 +31,18 @@ public interface IDocumentIngestionService
     Task ReindexDocumentAsync(Document document, CancellationToken ct = default);
 
     /// <summary>
+    /// Re-imports a document using the supplied permission metadata snapshot, replacing the previous knowledge
+    /// base entry. Use this overload when the caller has pending metadata changes that should not be committed
+    /// until the external re-index succeeds.
+    /// </summary>
+    Task ReindexDocumentAsync(Document document, DocumentPermissionMetadata permissions, CancellationToken ct = default);
+
+    /// <summary>
+    /// Builds the permission metadata currently stored for a document, including canonical tag IDs.
+    /// </summary>
+    Task<DocumentPermissionMetadata> BuildStoredPermissionMetadataAsync(Document document, CancellationToken ct = default);
+
+    /// <summary>
     /// Re-imports a document into the knowledge base from new file content, replacing the previous knowledge
     /// base entry. Updates the document's <see cref="Document.IngestStatus"/> and
     /// <see cref="Document.IngestErrorMessage"/> based on the outcome. Caller is responsible for persisting changes.

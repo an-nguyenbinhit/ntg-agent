@@ -140,7 +140,7 @@ project-management/
 ### Epic UoB-05 — Admin Portal & Monitoring · [[units-governance-ops#UoB-05: Admin Portal / Monitoring]]
 | ID | Story | Pri | Pts | Status |
 |---|---|---|---|---|
-| S-0501 | Là HR Admin, quản lý tài liệu/mapping qua control plane. | P2 | | [/] |
+| S-0501 | Là HR Admin, quản lý tài liệu/mapping qua control plane. | P2 | | [x] |
 | S-0502 | Là HR Admin, cấu hình persona/tone và provider config. | P2 | | [x] |
 | S-0503 | Là HR Admin, xem token usage & monitoring. | P3 | | [x] |
 
@@ -178,3 +178,4 @@ project-management/
 - 2026-06-11: Sprint 08 Admin Portal implementation completed for S-0503, S-0602/S-0603, and S-0702; added monitoring, feedback, and provider-routing screens.
 - 2026-06-11: Bắt đầu Sprint 09; cập nhật trạng thái các task P0 (S-0103, S-0201, S-0202, S-0401, S-0402) thành Done vì foundation đã được build từ Sprint 01.
 - 2026-06-11: Rà soát toàn bộ codebase, chuyển sang Sprint 10; cập nhật Done cho các tính năng thực tế đã code xong ở các sprint cũ (Slack, Handoff, Skill). S-0501 chuyển sang In Progress.
+- 2026-06-13: Hoàn tất S-0501; Admin metadata UI/API dùng `TagIds` canonical, manual/bulk re-index restamp Knowledge permissions bằng tag ID.

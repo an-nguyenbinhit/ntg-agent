@@ -11,5 +11,6 @@ public record DocumentMetadataUpdateRequest(
     List<string>? Countries = null,
     List<string>? LegalEntities = null,
     List<string>? ApplicableLevels = null,
-    List<string>? Tags = null
+    List<string>? Tags = null,
+    List<Guid>? TagIds = null
 );

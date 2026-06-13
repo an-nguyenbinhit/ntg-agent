@@ -69,6 +69,7 @@ public class DocumentsController : ControllerBase
                     x.CreatedAt,
                     x.UpdatedAt,
                     x.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
+                    x.DocumentTags.Select(dt => dt.TagId).ToList(),
                     x.Roles,
                     x.BusinessUnits,
                     x.SensitivityLevel,
@@ -96,6 +97,7 @@ public class DocumentsController : ControllerBase
             x.CreatedAt,
             x.UpdatedAt,
             x.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
+            x.DocumentTags.Select(dt => dt.TagId).ToList(),
             x.Roles,
             x.BusinessUnits,
             x.SensitivityLevel,
@@ -366,72 +368,47 @@ public class DocumentsController : ControllerBase
             return NotFound();
         }
 
-        document.Roles = request.Roles ?? [];
-        document.BusinessUnits = request.BusinessUnits ?? [];
-        document.SensitivityLevel = request.SensitivityLevel;
-        document.Owner = request.Owner;
-        document.Version = request.Version;
-        document.EffectiveDate = request.EffectiveDate;
-        document.ExpiredDate = request.ExpiredDate;
-        document.Countries = request.Countries ?? [];
-        document.LegalEntities = request.LegalEntities ?? [];
-        document.ApplicableLevels = request.ApplicableLevels ?? [];
-        document.UpdatedByUserId = userId;
-        document.UpdatedAt = DateTime.UtcNow;
+        var resolvedTagIds = await ResolveRequestedTagIdsAsync(request, ct);
+        if (resolvedTagIds.Error is not null)
+        {
+            return resolvedTagIds.Error;
+        }
 
-        var requestedTags = request.Tags is null ? null : NormalizeTags(request.Tags);
-        if (requestedTags != null)
+        var requestedTagIds = resolvedTagIds.TagIds ?? document.DocumentTags.Select(dt => dt.TagId).ToList();
+        var permissions = BuildMetadataUpdatePermissions(request, requestedTagIds, document.ApprovalStatus);
+
+        await _documentIngestionService.ReindexDocumentAsync(document, permissions, ct);
+
+        if (document.IngestStatus == IngestStatus.Failed)
+        {
+            await _agentDbContext.SaveChangesAsync(ct);
+            return StatusCode(StatusCodes.Status502BadGateway, new { document.IngestStatus, document.IngestErrorMessage });
+        }
+
+        ApplyMetadataUpdate(document, request, userId);
+        if (resolvedTagIds.TagIds is not null)
         {
             _agentDbContext.DocumentTags.RemoveRange(document.DocumentTags);
-            foreach (var tagName in requestedTags)
+            foreach (var tagId in resolvedTagIds.TagIds)
             {
-                var tag = await _agentDbContext.Tags.FirstOrDefaultAsync(t => t.Name == tagName, ct);
-                if (tag == null)
-                {
-                    tag = new Tag
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = tagName
-                    };
-                    _agentDbContext.Tags.Add(tag);
-                }
-
                 _agentDbContext.DocumentTags.Add(new DocumentTag
                 {
                     DocumentId = document.Id,
-                    TagId = tag.Id
+                    TagId = tagId
                 });
             }
         }
 
         await _agentDbContext.SaveChangesAsync(ct);
 
-        await _documentIngestionService.ReindexDocumentAsync(document, ct);
-
-        await _agentDbContext.SaveChangesAsync(ct);
-
         _logger.LogBusinessEvent("DocumentMetadataUpdated", new { AgentId = agentId, DocumentId = id, document.IngestStatus });
 
-        return Ok(new DocumentListItem(
-            document.Id,
-            document.Name,
-            document.CreatedAt,
-            document.UpdatedAt,
-            requestedTags ?? document.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
-            document.Roles,
-            document.BusinessUnits,
-            document.SensitivityLevel,
-            document.Owner,
-            document.Version,
-            document.EffectiveDate,
-            document.ExpiredDate,
-            document.Countries,
-            document.LegalEntities,
-            document.ApplicableLevels,
-            document.IngestStatus,
-            document.IngestErrorMessage,
-            document.ApprovalStatus,
-            document.NextReviewDate));
+        var refreshedDocument = await _agentDbContext.Documents
+            .Include(d => d.DocumentTags)
+            .ThenInclude(dt => dt.Tag)
+            .FirstAsync(d => d.Id == document.Id, ct);
+
+        return Ok(ToDocumentListItem(refreshedDocument));
     }
 
     [HttpPut("{agentId}/{id}/approval")]
@@ -448,29 +425,25 @@ public class DocumentsController : ControllerBase
             return NotFound();
         }
 
-        var previousApprovalStatus = document.ApprovalStatus;
-        var previousApprovedByUserId = document.ApprovedByUserId;
-        var previousNextReviewDate = document.NextReviewDate;
+        var permissions = await _documentIngestionService.BuildStoredPermissionMetadataAsync(document, ct);
+        permissions = permissions with { ApprovalStatus = request.ApprovalStatus.ToString() };
+
+        await _documentIngestionService.ReindexDocumentAsync(document, permissions, ct);
+
+        _logger.LogBusinessEvent("DocumentApprovalStatusUpdated", new { AgentId = agentId, DocumentId = id, RequestedApprovalStatus = request.ApprovalStatus, document.IngestStatus });
+
+        if (document.IngestStatus == IngestStatus.Failed)
+        {
+            var requestedApprovalStatus = request.ApprovalStatus;
+            await _agentDbContext.SaveChangesAsync(ct);
+            return StatusCode(StatusCodes.Status502BadGateway, new { RequestedApprovalStatus = requestedApprovalStatus, CurrentApprovalStatus = document.ApprovalStatus, document.IngestStatus, document.IngestErrorMessage });
+        }
 
         document.ApprovalStatus = request.ApprovalStatus;
         document.ApprovedByUserId = request.ApprovalStatus == ApprovalStatus.Approved ? userId : null;
         document.NextReviewDate = request.ApprovalStatus == ApprovalStatus.Approved ? request.NextReviewDate : null;
         document.UpdatedByUserId = userId;
         document.UpdatedAt = DateTime.UtcNow;
-
-        await _documentIngestionService.ReindexDocumentAsync(document, ct);
-
-        _logger.LogBusinessEvent("DocumentApprovalStatusUpdated", new { AgentId = agentId, DocumentId = id, document.ApprovalStatus, document.IngestStatus });
-
-        if (document.IngestStatus == IngestStatus.Failed)
-        {
-            var requestedApprovalStatus = request.ApprovalStatus;
-            document.ApprovalStatus = previousApprovalStatus;
-            document.ApprovedByUserId = previousApprovedByUserId;
-            document.NextReviewDate = previousNextReviewDate;
-            await _agentDbContext.SaveChangesAsync(ct);
-            return StatusCode(StatusCodes.Status502BadGateway, new { RequestedApprovalStatus = requestedApprovalStatus, CurrentApprovalStatus = document.ApprovalStatus, document.IngestStatus, document.IngestErrorMessage });
-        }
 
         await _agentDbContext.SaveChangesAsync(ct);
 
@@ -495,7 +468,8 @@ public class DocumentsController : ControllerBase
             return NotFound();
         }
 
-        await _documentIngestionService.ReindexDocumentAsync(document, ct);
+        var permissions = await _documentIngestionService.BuildStoredPermissionMetadataAsync(document, ct);
+        await _documentIngestionService.ReindexDocumentAsync(document, permissions, ct);
         await _agentDbContext.SaveChangesAsync(ct);
 
         _logger.LogBusinessEvent("DocumentReindexed", new { AgentId = agentId, DocumentId = id, document.IngestStatus });
@@ -771,6 +745,41 @@ public class DocumentsController : ControllerBase
         };
     }
 
+    private static DocumentPermissionMetadata BuildMetadataUpdatePermissions(
+        DocumentMetadataUpdateRequest request,
+        IEnumerable<Guid> tagIds,
+        ApprovalStatus approvalStatus)
+    {
+        var applicableLevels = request.ApplicableLevels ?? [];
+        return new DocumentPermissionMetadata
+        {
+            Roles = request.Roles ?? [],
+            BusinessUnits = request.BusinessUnits ?? [],
+            Countries = request.Countries ?? [],
+            LegalEntities = request.LegalEntities ?? [],
+            ApplicableLevels = applicableLevels,
+            ApplicableTo = applicableLevels,
+            SensitivityLevel = request.SensitivityLevel,
+            ApprovalStatus = approvalStatus.ToString()
+        }.WithAllowedTags(tagIds.Select(x => x.ToString()));
+    }
+
+    private static void ApplyMetadataUpdate(Document document, DocumentMetadataUpdateRequest request, Guid userId)
+    {
+        document.Roles = request.Roles ?? [];
+        document.BusinessUnits = request.BusinessUnits ?? [];
+        document.SensitivityLevel = request.SensitivityLevel;
+        document.Owner = request.Owner;
+        document.Version = request.Version;
+        document.EffectiveDate = request.EffectiveDate;
+        document.ExpiredDate = request.ExpiredDate;
+        document.Countries = request.Countries ?? [];
+        document.LegalEntities = request.LegalEntities ?? [];
+        document.ApplicableLevels = request.ApplicableLevels ?? [];
+        document.UpdatedByUserId = userId;
+        document.UpdatedAt = DateTime.UtcNow;
+    }
+
     private static List<string> NormalizeTags(IEnumerable<string>? tags)
     {
         return tags?
@@ -778,6 +787,101 @@ public class DocumentsController : ControllerBase
             .Select(x => x.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() ?? [];
+    }
+
+    private async Task<(List<Guid>? TagIds, IActionResult? Error)> ResolveRequestedTagIdsAsync(DocumentMetadataUpdateRequest request, CancellationToken ct)
+    {
+        if (request.TagIds is not null)
+        {
+            var requestedTagIds = request.TagIds
+                .Distinct()
+                .ToList();
+            var existingTagIds = await _agentDbContext.Tags
+                .Where(t => requestedTagIds.Contains(t.Id))
+                .Select(t => t.Id)
+                .ToListAsync(ct);
+            var missingTagIds = requestedTagIds.Except(existingTagIds).ToList();
+            if (missingTagIds.Count != 0)
+            {
+                return (null, BadRequest(new { Message = "One or more tags do not exist.", TagIds = missingTagIds }));
+            }
+
+            return (requestedTagIds, null);
+        }
+
+        if (request.Tags is null)
+        {
+            return (null, null);
+        }
+
+        var requestedTags = NormalizeTags(request.Tags);
+        var tagIds = new List<Guid>();
+        var tagNames = new List<string>();
+
+        foreach (var tag in requestedTags)
+        {
+            if (Guid.TryParse(tag, out var tagId))
+            {
+                tagIds.Add(tagId);
+            }
+            else
+            {
+                tagNames.Add(tag);
+            }
+        }
+
+        var tagsById = tagIds.Count == 0
+            ? new List<Guid>()
+            : await _agentDbContext.Tags
+                .Where(t => tagIds.Contains(t.Id))
+                .Select(t => t.Id)
+                .ToListAsync(ct);
+
+        var allNamedTags = tagNames.Count == 0
+            ? new List<Tag>()
+            : await _agentDbContext.Tags
+                .Where(t => tagNames.Contains(t.Name))
+                .ToListAsync(ct);
+
+        var resolvedTagIds = tagsById
+            .Concat(allNamedTags.Select(t => t.Id))
+            .Distinct()
+            .ToList();
+        var missingTags = tagIds.Except(tagsById).Select(x => x.ToString())
+            .Concat(tagNames.Except(allNamedTags.Select(t => t.Name), StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        if (missingTags.Count != 0)
+        {
+            return (null, BadRequest(new { Message = "One or more tags do not exist.", Tags = missingTags }));
+        }
+
+        return (resolvedTagIds, null);
+    }
+
+    private static DocumentListItem ToDocumentListItem(Document document)
+    {
+        return new DocumentListItem(
+            document.Id,
+            document.Name,
+            document.CreatedAt,
+            document.UpdatedAt,
+            document.DocumentTags.Select(dt => dt.Tag.Name).ToList(),
+            document.DocumentTags.Select(dt => dt.TagId).ToList(),
+            document.Roles,
+            document.BusinessUnits,
+            document.SensitivityLevel,
+            document.Owner,
+            document.Version,
+            document.EffectiveDate,
+            document.ExpiredDate,
+            document.Countries,
+            document.LegalEntities,
+            document.ApplicableLevels,
+            document.IngestStatus,
+            document.IngestErrorMessage,
+            document.ApprovalStatus,
+            document.NextReviewDate);
     }
 }
 

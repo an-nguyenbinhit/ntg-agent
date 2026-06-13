@@ -47,17 +47,20 @@ public class ReingestToolTests
         Assert.That(summary.DryRun, Is.True);
         Assert.That(summary.Scanned, Is.EqualTo(1));
         Assert.That(summary.Reindexed, Is.EqualTo(0));
-        _ingestionService.Verify(x => x.ReindexDocumentAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ingestionService.Verify(x => x.ReindexDocumentAsync(It.IsAny<Document>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
     public async Task RunAsync_WhenNotDryRun_AppliesDefaultMetadataAndReindexes()
     {
         var document = await AddDocumentAsync("policy.pdf", "km-1");
+        var defaultTag = await AddTagAsync("Public");
+        DocumentPermissionMetadata? capturedPermissions = null;
         _ingestionService
-            .Setup(x => x.ReindexDocumentAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Callback<Document, CancellationToken>((d, _) =>
+            .Setup(x => x.ReindexDocumentAsync(It.IsAny<Document>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .Callback<Document, DocumentPermissionMetadata, CancellationToken>((d, permissions, _) =>
             {
+                capturedPermissions = permissions;
                 d.KnowledgeDocId = "km-2";
                 d.IngestStatus = IngestStatus.Success;
             })
@@ -70,6 +73,22 @@ public class ReingestToolTests
         Assert.That(document.BusinessUnits, Is.EqualTo(new[] { "All" }));
         Assert.That(document.SensitivityLevel, Is.EqualTo("Public"));
         Assert.That(document.KnowledgeDocId, Is.EqualTo("km-2"));
+        Assert.That(await _context.DocumentTags.CountAsync(x => x.DocumentId == document.Id && x.TagId == defaultTag.Id), Is.EqualTo(1));
+        Assert.That(capturedPermissions, Is.Not.Null);
+        Assert.That(capturedPermissions!.AllowedTags, Is.EquivalentTo(new[] { defaultTag.Id.ToString() }));
+    }
+
+    [Test]
+    public async Task RunAsync_WhenDefaultTagDoesNotExist_ThrowsBeforeReindex()
+    {
+        await AddDocumentAsync("policy.pdf", "km-1");
+        var missingTagId = Guid.NewGuid();
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _tool.RunAsync(new ReingestMigrationRequest(DryRun: false, DefaultTagIds: [missingTagId])));
+
+        Assert.That(ex!.Message, Does.Contain(missingTagId.ToString()));
+        _ingestionService.Verify(x => x.ReindexDocumentAsync(It.IsAny<Document>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private async Task<Document> AddDocumentAsync(string name, string knowledgeDocId)
@@ -88,5 +107,16 @@ public class ReingestToolTests
         await _context.SaveChangesAsync();
         return document;
     }
-}
 
+    private async Task<Models.Tags.Tag> AddTagAsync(string name)
+    {
+        var tag = new Models.Tags.Tag
+        {
+            Id = new Guid("10dd4508-4e35-4c63-bd74-5d90246c7770"),
+            Name = name
+        };
+        _context.Tags.Add(tag);
+        await _context.SaveChangesAsync();
+        return tag;
+    }
+}

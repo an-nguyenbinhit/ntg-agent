@@ -10,7 +10,8 @@ public sealed record ReingestMigrationRequest(
     bool? DryRun = null,
     List<string>? DefaultRoles = null,
     List<string>? DefaultBusinessUnits = null,
-    string? DefaultSensitivityLevel = null);
+    string? DefaultSensitivityLevel = null,
+    List<Guid>? DefaultTagIds = null);
 
 public sealed record ReingestMigrationSummary(
     bool DryRun,
@@ -26,4 +27,3 @@ public sealed record ReingestMigrationItem(
     string? CurrentKnowledgeDocId,
     bool Reindexed,
     string? Error);
-

@@ -1,3 +1,5 @@
+using AskHR.Common.Dtos.Constants;
+
 namespace AskHR.Orchestrator.Services.Knowledge;
 
 public sealed class ReingestMigrationOptions
@@ -11,5 +13,6 @@ public sealed class ReingestMigrationOptions
     public List<string> DefaultBusinessUnits { get; init; } = ["All"];
 
     public string DefaultSensitivityLevel { get; init; } = "Public";
-}
 
+    public List<string> DefaultTagIds { get; init; } = [Constants.PublicTagId];
+}

@@ -15,6 +15,21 @@
         </button>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(operationSuccessMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @operationSuccessMessage
+            <button type="button" class="btn-close" @onclick="ClearOperationMessages" aria-label="Close"></button>
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(operationErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @operationErrorMessage
+            <button type="button" class="btn-close" @onclick="ClearOperationMessages" aria-label="Close"></button>
+        </div>
+    }
+
     <!-- Documents List -->
     <div>
         @if (isLoading)
@@ -313,6 +328,8 @@
     private DocumentListItem? documentToDelete;
     private DocumentListItem? documentToView;
     private DocumentListItem? documentToEdit;
+    private string? operationSuccessMessage;
+    private string? operationErrorMessage;
 
     private Guid? _previousFolderId;
 
@@ -459,12 +476,15 @@
 
         try
         {
+            ClearOperationMessages();
             await DocumentClient.UpdateDocumentMetadataAsync(AgentId, documentToEdit.Id, request);
             await LoadDocuments(); // Reload to show new metadata
+            operationSuccessMessage = $"Metadata updated and re-indexed for '{documentToEdit.Name}'.";
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error updating document metadata");
+            operationErrorMessage = $"Failed to update metadata for '{documentToEdit.Name}': {ex.Message}";
         }
         finally
         {
@@ -476,13 +496,16 @@
     {
         try
         {
+            ClearOperationMessages();
             await DocumentClient.ReindexDocumentAsync(AgentId, document.Id);
             Logger.LogInformation("Successfully requested reindex for document {DocumentId}", document.Id);
             await LoadDocuments();
+            operationSuccessMessage = $"Re-index completed for '{document.Name}'.";
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error reindexing document {DocumentId}", document.Id);
+            operationErrorMessage = $"Failed to re-index '{document.Name}': {ex.Message}";
         }
     }
 
@@ -500,13 +523,22 @@
     {
         try
         {
+            ClearOperationMessages();
             await DocumentClient.UpdateDocumentApprovalStatusAsync(AgentId, document.Id, approvalStatus);
             await LoadDocuments();
+            operationSuccessMessage = $"Document '{document.Name}' marked as {approvalStatus}.";
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error updating approval status for document {DocumentId}", document.Id);
+            operationErrorMessage = $"Failed to mark '{document.Name}' as {approvalStatus}: {ex.Message}";
         }
+    }
+
+    private void ClearOperationMessages()
+    {
+        operationSuccessMessage = null;
+        operationErrorMessage = null;
     }
 
     private static string GetApprovalBadgeClass(ApprovalStatus approvalStatus) => approvalStatus switch

@@ -8,6 +8,7 @@ public record DocumentListItem (
     DateTime CreatedAt,
     DateTime UpdatedAt,
     List<string> Tags,
+    List<Guid> TagIds,
     List<string> Roles,
     List<string> BusinessUnits,
     string? SensitivityLevel,

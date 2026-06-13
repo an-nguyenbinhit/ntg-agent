@@ -452,6 +452,7 @@ public class DocumentsControllerTests
     public async Task UpdateDocumentMetadata_WhenWebPageDocument_UpdatesMetadataAndReindexesSuccessfully()
     {
         // Arrange
+        var tag = new Models.Tags.Tag { Id = Guid.NewGuid(), Name = "HR Policy" };
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -462,6 +463,7 @@ public class DocumentsControllerTests
             Type = DocumentType.WebPage,
             IngestStatus = IngestStatus.Success
         };
+        _context.Tags.Add(tag);
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
         DocumentPermissionMetadata? capturedPermissions = null;
@@ -480,7 +482,9 @@ public class DocumentsControllerTests
             expiredDate,
             ["VN", "SG"],
             ["NTG-VN"],
-            ["L2", "Manager"]);
+            ["L2", "Manager"],
+            null,
+            [tag.Id]);
         // Act
         var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
         // Assert
@@ -511,12 +515,82 @@ public class DocumentsControllerTests
         Assert.That(capturedPermissions.LegalEntities, Is.EquivalentTo(new[] { "NTG-VN" }));
         Assert.That(capturedPermissions.ApplicableLevels, Is.EquivalentTo(new[] { "L2", "Manager" }));
         Assert.That(capturedPermissions.ApplicableTo, Is.EquivalentTo(new[] { "L2", "Manager" }));
+        Assert.That(capturedPermissions.AllowedTags, Is.EquivalentTo(new[] { tag.Id.ToString() }));
+        Assert.That(response.TagIds, Is.EquivalentTo(new[] { tag.Id }));
+        Assert.That(response.Tags, Is.EquivalentTo(new[] { tag.Name }));
+        var documentTags = await _context.DocumentTags.Where(dt => dt.DocumentId == document.Id).ToListAsync();
+        Assert.That(documentTags.Select(dt => dt.TagId), Is.EquivalentTo(new[] { tag.Id }));
         _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync("old-knowledge-doc-id", _testAgentId, It.IsAny<CancellationToken>()), Times.Once);
     }
+
     [Test]
-    public async Task UpdateDocumentMetadata_WhenReindexFails_SetsIngestStatusFailed()
+    public async Task UpdateDocumentMetadata_WhenLegacyTagNamesProvided_ResolvesExistingTagIds()
     {
         // Arrange
+        var tag = new Models.Tags.Tag { Id = Guid.NewGuid(), Name = "Benefits" };
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Tags.Add(tag);
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        DocumentPermissionMetadata? capturedPermissions = null;
+        _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Guid, DocumentPermissionMetadata, CancellationToken>((_, _, permissions, _) => capturedPermissions = permissions)
+            .ReturnsAsync("new-knowledge-doc-id");
+        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Internal", Tags: [tag.Name]);
+
+        // Act
+        var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        Assert.That(capturedPermissions, Is.Not.Null);
+        Assert.That(capturedPermissions!.AllowedTags, Is.EquivalentTo(new[] { tag.Id.ToString() }));
+        Assert.That(await _context.DocumentTags.CountAsync(dt => dt.DocumentId == document.Id && dt.TagId == tag.Id), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task UpdateDocumentMetadata_WhenUnknownTagIdProvided_ReturnsBadRequestAndDoesNotReindex()
+    {
+        // Arrange
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            Name = "https://example.com",
+            Url = "https://example.com",
+            AgentId = _testAgentId,
+            KnowledgeDocId = "old-knowledge-doc-id",
+            Type = DocumentType.WebPage,
+            IngestStatus = IngestStatus.Success
+        };
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+        var request = new DocumentMetadataUpdateRequest(["HR"], ["Finance"], "Internal", TagIds: [Guid.NewGuid()]);
+
+        // Act
+        var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+        _mockKnowledgeService.Verify(x => x.ImportWebPageAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(await _context.DocumentTags.CountAsync(dt => dt.DocumentId == document.Id), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task UpdateDocumentMetadata_WhenReindexFails_RollsBackMetadataAndReturnsBadGateway()
+    {
+        // Arrange
+        var originalTag = new Models.Tags.Tag { Id = Guid.NewGuid(), Name = "Original" };
+        var newTag = new Models.Tags.Tag { Id = Guid.NewGuid(), Name = "New" };
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -524,21 +598,55 @@ public class DocumentsControllerTests
             AgentId = _testAgentId,
             KnowledgeDocId = "old-knowledge-doc-id",
             Type = DocumentType.File,
-            IngestStatus = IngestStatus.Success
+            IngestStatus = IngestStatus.Success,
+            Roles = ["Employee"],
+            BusinessUnits = ["VN"],
+            SensitivityLevel = "Internal",
+            Owner = "Original Owner",
+            Version = "1.0",
+            Countries = ["VN"],
+            LegalEntities = ["NTG"],
+            ApplicableLevels = ["L1"],
+            DocumentTags = new List<DocumentTag>
+            {
+                new DocumentTag { TagId = originalTag.Id, Tag = originalTag }
+            }
         };
+        _context.Tags.AddRange(originalTag, newTag);
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
         _mockKnowledgeService.Setup(x => x.ExportDocumentAsync("old-knowledge-doc-id", It.IsAny<string>(), _testAgentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Microsoft.KernelMemory.StreamableFileContent)null!);
-        var request = new DocumentMetadataUpdateRequest(["HR"], [], "Confidential");
+        var request = new DocumentMetadataUpdateRequest(
+            ["HR"],
+            ["Finance"],
+            "Confidential",
+            "New Owner",
+            "2.0",
+            Countries: ["SG"],
+            LegalEntities: ["NTS"],
+            ApplicableLevels: ["L2"],
+            TagIds: [newTag.Id]);
         // Act
         var result = await _controller.UpdateDocumentMetadata(_testAgentId, document.Id, request, CancellationToken.None);
         // Assert
-        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var statusResult = result as ObjectResult;
+        Assert.That(statusResult, Is.Not.Null);
+        Assert.That(statusResult.StatusCode, Is.EqualTo(StatusCodes.Status502BadGateway));
         var updatedDocument = await _context.Documents.FindAsync(document.Id);
         Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Failed));
         Assert.That(updatedDocument.IngestErrorMessage, Is.Not.Null.And.Not.Empty);
         Assert.That(updatedDocument.KnowledgeDocId, Is.EqualTo("old-knowledge-doc-id"));
+        Assert.That(updatedDocument.Roles, Is.EquivalentTo(new[] { "Employee" }));
+        Assert.That(updatedDocument.BusinessUnits, Is.EquivalentTo(new[] { "VN" }));
+        Assert.That(updatedDocument.SensitivityLevel, Is.EqualTo("Internal"));
+        Assert.That(updatedDocument.Owner, Is.EqualTo("Original Owner"));
+        Assert.That(updatedDocument.Version, Is.EqualTo("1.0"));
+        Assert.That(updatedDocument.Countries, Is.EquivalentTo(new[] { "VN" }));
+        Assert.That(updatedDocument.LegalEntities, Is.EquivalentTo(new[] { "NTG" }));
+        Assert.That(updatedDocument.ApplicableLevels, Is.EquivalentTo(new[] { "L1" }));
+        var documentTags = await _context.DocumentTags.Where(dt => dt.DocumentId == document.Id).ToListAsync();
+        Assert.That(documentTags.Select(dt => dt.TagId), Is.EquivalentTo(new[] { originalTag.Id }));
         _mockKnowledgeService.Verify(x => x.RemoveDocumentAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
     [Test]
@@ -553,6 +661,7 @@ public class DocumentsControllerTests
     public async Task ReindexDocument_WhenSuccessful_ReturnsOk()
     {
         // Arrange
+        var tag = new Models.Tags.Tag { Id = Guid.NewGuid(), Name = "Private" };
         var document = new Document
         {
             Id = Guid.NewGuid(),
@@ -562,11 +671,18 @@ public class DocumentsControllerTests
             KnowledgeDocId = "old-knowledge-doc-id",
             Type = DocumentType.WebPage,
             IngestStatus = IngestStatus.Failed,
-            IngestErrorMessage = "previous failure"
+            IngestErrorMessage = "previous failure",
+            DocumentTags = new List<DocumentTag>
+            {
+                new DocumentTag { TagId = tag.Id, Tag = tag }
+            }
         };
+        _context.Tags.Add(tag);
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
+        DocumentPermissionMetadata? capturedPermissions = null;
         _mockKnowledgeService.Setup(x => x.ImportWebPageAsync(document.Url, _testAgentId, It.IsAny<DocumentPermissionMetadata>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Guid, DocumentPermissionMetadata, CancellationToken>((_, _, permissions, _) => capturedPermissions = permissions)
             .ReturnsAsync("new-knowledge-doc-id");
         // Act
         var result = await _controller.ReindexDocument(_testAgentId, document.Id, CancellationToken.None);
@@ -575,6 +691,8 @@ public class DocumentsControllerTests
         var updatedDocument = await _context.Documents.FindAsync(document.Id);
         Assert.That(updatedDocument!.IngestStatus, Is.EqualTo(IngestStatus.Success));
         Assert.That(updatedDocument.IngestErrorMessage, Is.Null);
+        Assert.That(capturedPermissions, Is.Not.Null);
+        Assert.That(capturedPermissions!.AllowedTags, Is.EquivalentTo(new[] { tag.Id.ToString() }));
     }
     [Test]
     public async Task ReindexDocument_WhenFails_ReturnsBadGateway()

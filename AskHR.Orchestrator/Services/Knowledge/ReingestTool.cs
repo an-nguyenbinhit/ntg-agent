@@ -1,6 +1,7 @@
 using AskHR.Common.Dtos.Documents;
 using AskHR.Orchestrator.Data;
 using AskHR.Orchestrator.Models.Documents;
+using AskHR.Orchestrator.Models.Tags;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -33,8 +34,10 @@ public sealed class ReingestTool : IReingestTool
         var defaultRoles = CleanList(request.DefaultRoles ?? _options.Value.DefaultRoles);
         var defaultBusinessUnits = CleanList(request.DefaultBusinessUnits ?? _options.Value.DefaultBusinessUnits);
         var defaultSensitivityLevel = TrimToNull(request.DefaultSensitivityLevel) ?? _options.Value.DefaultSensitivityLevel;
+        List<Guid> defaultTagIds = dryRun ? [] : await ResolveDefaultTagIdsAsync(request.DefaultTagIds, cancellationToken);
 
         var query = _dbContext.Documents
+            .Include(x => x.DocumentTags)
             .Where(x => x.KnowledgeDocId != null);
 
         if (request.AgentId.HasValue)
@@ -57,11 +60,12 @@ public sealed class ReingestTool : IReingestTool
                 continue;
             }
 
-            ApplyDefaultPermissions(document, defaultRoles, defaultBusinessUnits, defaultSensitivityLevel);
+            ApplyDefaultPermissions(document, defaultRoles, defaultBusinessUnits, defaultSensitivityLevel, defaultTagIds);
+            var permissions = BuildPermissionSnapshot(document);
 
             try
             {
-                await _documentIngestionService.ReindexDocumentAsync(document, cancellationToken);
+                await _documentIngestionService.ReindexDocumentAsync(document, permissions, cancellationToken);
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
                 items.Add(new ReingestMigrationItem(
@@ -87,22 +91,82 @@ public sealed class ReingestTool : IReingestTool
             items);
     }
 
-    private static void ApplyDefaultPermissions(Document document, List<string> defaultRoles, List<string> defaultBusinessUnits, string defaultSensitivityLevel)
+    private void ApplyDefaultPermissions(
+        Document document,
+        List<string> defaultRoles,
+        List<string> defaultBusinessUnits,
+        string defaultSensitivityLevel,
+        List<Guid> defaultTagIds)
     {
         if (document.Roles.Count == 0)
         {
-            document.Roles = defaultRoles;
+            document.Roles = [.. defaultRoles];
         }
 
         if (document.BusinessUnits.Count == 0)
         {
-            document.BusinessUnits = defaultBusinessUnits;
+            document.BusinessUnits = [.. defaultBusinessUnits];
         }
 
         if (string.IsNullOrWhiteSpace(document.SensitivityLevel))
         {
             document.SensitivityLevel = defaultSensitivityLevel;
         }
+
+        if (document.DocumentTags.Count == 0)
+        {
+            foreach (var tagId in defaultTagIds)
+            {
+                var documentTag = new DocumentTag
+                {
+                    DocumentId = document.Id,
+                    TagId = tagId
+                };
+                _dbContext.DocumentTags.Add(documentTag);
+            }
+        }
+    }
+
+    private static DocumentPermissionMetadata BuildPermissionSnapshot(Document document)
+    {
+        return new DocumentPermissionMetadata
+        {
+            Roles = document.Roles,
+            BusinessUnits = document.BusinessUnits,
+            Countries = document.Countries,
+            LegalEntities = document.LegalEntities,
+            ApplicableLevels = document.ApplicableLevels,
+            ApplicableTo = document.ApplicableLevels,
+            SensitivityLevel = document.SensitivityLevel,
+            ApprovalStatus = document.ApprovalStatus.ToString()
+        }.WithAllowedTags(document.DocumentTags.Select(x => x.TagId.ToString()));
+    }
+
+    private async Task<List<Guid>> ResolveDefaultTagIdsAsync(List<Guid>? requestTagIds, CancellationToken cancellationToken)
+    {
+        var requested = requestTagIds is { Count: > 0 }
+            ? requestTagIds.Distinct().ToList()
+            : CleanList(_options.Value.DefaultTagIds)
+                .Select(x => Guid.TryParse(x, out var tagId) ? tagId : throw new InvalidOperationException($"Invalid ReingestMigration default tag id '{x}'."))
+                .Distinct()
+                .ToList();
+
+        if (requested.Count == 0)
+        {
+            return [];
+        }
+
+        var existing = await _dbContext.Tags
+            .Where(x => requested.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var missing = requested.Except(existing).ToList();
+        if (missing.Count != 0)
+        {
+            throw new InvalidOperationException($"ReingestMigration default tags do not exist: {string.Join(", ", missing)}.");
+        }
+
+        return requested;
     }
 
     private static List<string> CleanList(IEnumerable<string>? values) =>
@@ -115,4 +179,3 @@ public sealed class ReingestTool : IReingestTool
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
-

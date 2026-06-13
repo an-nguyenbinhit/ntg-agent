@@ -1,5 +1,7 @@
 @using AskHR.Common.Dtos.Documents
 @using AskHR.Common.Dtos.Services
+@using AskHR.Common.Dtos.Tags
+@inject TagClient TagClient
 
 <div class="modal fade @(IsVisible ? "show d-block" : "d-none")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
     <div class="modal-dialog modal-lg" role="document">
@@ -75,8 +77,38 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">Tags</label>
-                        <input type="text" class="form-control" @bind="tagsInput" placeholder="e.g. policy, onboarding, tax (comma separated)" />
-                        <div class="form-text">Comma-separated list of tags for searching and filtering.</div>
+                        @if (isLoadingTags)
+                        {
+                            <div class="d-flex align-items-center gap-2 text-muted">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                <span>Loading tags...</span>
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(tagLoadError))
+                        {
+                            <div class="alert alert-warning mb-0">@tagLoadError</div>
+                        }
+                        else if (availableTags.Count == 0)
+                        {
+                            <div class="text-muted">No tags available.</div>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var tag in availableTags)
+                                {
+                                    var inputId = $"edit-doc-tag-{tag.Id}";
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               id="@inputId"
+                                               checked="@selectedTagIds.Contains(tag.Id)"
+                                               @onchange="eventArgs => ToggleTag(tag.Id, eventArgs)" />
+                                        <label class="form-check-label" for="@inputId">@tag.Name</label>
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -122,13 +154,18 @@
     private string sensitivityLevel = "Internal";
     private string rolesInput = string.Empty;
     private string businessUnitsInput = string.Empty;
-    private string tagsInput = string.Empty;
+    private List<TagDto> availableTags = [];
+    private HashSet<Guid> selectedTagIds = [];
+    private string? tagLoadError;
+    private bool isLoadingTags;
+    private Guid? loadedDocumentId;
     private bool isSaving = false;
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        if (IsVisible && Document != null)
+        if (IsVisible && Document != null && loadedDocumentId != Document.Id)
         {
+            loadedDocumentId = Document.Id;
             owner = Document.Owner;
             version = Document.Version;
             effectiveDate = Document.EffectiveDate;
@@ -139,7 +176,12 @@
             countriesInput = string.Join(", ", Document.Countries ?? new List<string>());
             legalEntitiesInput = string.Join(", ", Document.LegalEntities ?? new List<string>());
             applicableLevelsInput = string.Join(", ", Document.ApplicableLevels ?? new List<string>());
-            tagsInput = string.Join(", ", Document.Tags ?? new List<string>());
+            selectedTagIds = Document.TagIds?.ToHashSet() ?? [];
+            await LoadTags();
+        }
+        else if (!IsVisible)
+        {
+            loadedDocumentId = null;
         }
     }
 
@@ -173,9 +215,10 @@
                 ? new List<string>() 
                 : applicableLevelsInput.Split(',').Select(b => b.Trim()).Where(b => !string.IsNullOrEmpty(b)).ToList();
 
-            var tags = string.IsNullOrWhiteSpace(tagsInput)
-                ? new List<string>()
-                : tagsInput.Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList();
+            var tags = availableTags
+                .Where(t => selectedTagIds.Contains(t.Id))
+                .Select(t => t.Name)
+                .ToList();
 
             var request = new DocumentMetadataUpdateRequest(
                 roles, 
@@ -188,13 +231,53 @@
                 countries, 
                 legalEntities, 
                 applicableLevels, 
-                tags);
+                tags,
+                selectedTagIds.ToList());
 
             await OnSave.InvokeAsync(request);
         }
         finally
         {
             isSaving = false;
+        }
+    }
+
+    private async Task LoadTags()
+    {
+        try
+        {
+            isLoadingTags = true;
+            tagLoadError = null;
+            availableTags = await TagClient.GetTagsAsync();
+
+            if (selectedTagIds.Count == 0 && Document?.Tags is { Count: > 0 })
+            {
+                selectedTagIds = availableTags
+                    .Where(t => Document.Tags.Contains(t.Name, StringComparer.OrdinalIgnoreCase))
+                    .Select(t => t.Id)
+                    .ToHashSet();
+            }
+        }
+        catch (Exception ex)
+        {
+            tagLoadError = $"Failed to load tags: {ex.Message}";
+            availableTags = [];
+        }
+        finally
+        {
+            isLoadingTags = false;
+        }
+    }
+
+    private void ToggleTag(Guid tagId, ChangeEventArgs eventArgs)
+    {
+        if (eventArgs.Value is bool isChecked && isChecked)
+        {
+            selectedTagIds.Add(tagId);
+        }
+        else
+        {
+            selectedTagIds.Remove(tagId);
         }
     }
 }

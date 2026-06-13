@@ -35,7 +35,15 @@ public class DocumentIngestionService : IDocumentIngestionService
 
     public async Task ReindexDocumentAsync(Document document, CancellationToken ct = default)
     {
-        var permissions = await GetStoredPermissionsAsync(document, ct);
+        var permissions = await BuildStoredPermissionMetadataAsync(document, ct);
+        await ReindexDocumentAsync(document, permissions, ct);
+    }
+
+    public async Task ReindexDocumentAsync(Document document, DocumentPermissionMetadata permissions, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(permissions);
+
         var previousKnowledgeDocId = document.KnowledgeDocId;
 
         try
@@ -132,7 +140,7 @@ public class DocumentIngestionService : IDocumentIngestionService
 
         // Preserve the permission metadata the document already has; the watch folder
         // carries no permission information of its own.
-        var permissions = await GetStoredPermissionsAsync(existingDocument, ct);
+        var permissions = await BuildStoredPermissionMetadataAsync(existingDocument, ct);
         await ReindexExistingDocumentWithStreamAsync(existingDocument, content, permissions, ct);
         await _agentDbContext.SaveChangesAsync(ct);
 
@@ -178,11 +186,13 @@ public class DocumentIngestionService : IDocumentIngestionService
             : DocumentIngestionOutcome.Failed;
     }
 
-    private async Task<DocumentPermissionMetadata> GetStoredPermissionsAsync(Document document, CancellationToken ct)
+    public async Task<DocumentPermissionMetadata> BuildStoredPermissionMetadataAsync(Document document, CancellationToken ct = default)
     {
-        var tags = await _agentDbContext.DocumentTags
+        ArgumentNullException.ThrowIfNull(document);
+
+        var tagIds = await _agentDbContext.DocumentTags
             .Where(dt => dt.DocumentId == document.Id)
-            .Select(dt => dt.Tag.Name)
+            .Select(dt => dt.TagId.ToString())
             .ToListAsync(ct);
 
         return new DocumentPermissionMetadata
@@ -195,6 +205,6 @@ public class DocumentIngestionService : IDocumentIngestionService
             ApplicableTo = document.ApplicableLevels,
             SensitivityLevel = document.SensitivityLevel,
             ApprovalStatus = document.ApprovalStatus.ToString()
-        }.WithAllowedTags(tags);
+        }.WithAllowedTags(tagIds);
     }
 }
