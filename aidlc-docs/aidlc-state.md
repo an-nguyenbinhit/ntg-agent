@@ -6,7 +6,7 @@
 - **Project Type**: Brownfield application with AI-DLC requirements baseline
 - **Start Date**: 2026-06-06T00:00:00Z
 - **Current Phase**: CONSTRUCTION
-- **Current Stage**: Sprint 10 - Document Metadata Management & UI (Complete)
+- **Current Stage**: Sprint 11 - Admin Portal Verification & E2E Testing (In Progress)
 
 ## Workspace State
 
@@ -31,7 +31,7 @@
 | Workflow Planning | Complete | Sprint execution artifacts exist under `project-management/sprints/`. |
 | Application Design | Drafted | Domain/service boundaries are represented by UoB docs, ADR-001, `IKnowledgeService`, `AuthorizationContext`, RBAC, and Kernel Memory adapter contracts. |
 | Units Generation | Complete | UoB-01 through UoB-08 are mapped into Scrum execution artifacts. |
-| Code Generation | In Progress | Sprint 10 completed S-0501 document metadata UI/API, tag-ID canonicalization, explicit re-index permission snapshots, and legacy corpus re-ingest support. |
+| Code Generation | In Progress | Sprint 11 setting up Playwright E2E testing for Admin Portal. |
 | Build and Test | In Progress | Targeted AskHR.Orchestrator tests pass for DocumentsController, DocumentIngestionService, and ReingestTool. |
 
 ## Current Recommendation
@@ -41,4 +41,4 @@
 1. Re-ingest migration endpoint `POST /api/migration/reingest` now restamps legacy corpus with canonical tag IDs. Default `DryRun=true`; set `DryRun=false` only after corpus/index backup or inventory is available.
 2. `DocumentMetadataUpdateRequest.TagIds` is the canonical write contract. `Tags` remains for display and legacy compatibility.
 3. Re-index operations pass explicit `DocumentPermissionMetadata` snapshots to avoid committing pending DB metadata before external Knowledge re-index succeeds.
-4. Next engineering focus should be live Admin Portal verification against `AskHR.AppHost` with seeded documents and a real Knowledge index.
+4. Focus on live Admin Portal verification against `AskHR.AppHost` with Playwright E2E tests for document ingestion and metadata updates.

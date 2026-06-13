@@ -164,6 +164,15 @@ project-management/
 | S-0802 | Là User, xem conversation history và gửi feedback trên web. | P3 | | [x] |
 | S-0803 | Là hệ thống, web identity resolver → Authorization Context. | P2 | | [x] |
 
+## Epic → Story (E2E & Verification)
+
+### Epic UoB-09 — System Quality & End-to-End Verification
+| ID | Story | Pri | Pts | Status |
+|---|---|---|---|---|
+| S-1101 | Là Dev, thiết lập hệ thống Playwright E2E Test cho project AskHR.Admin. | P1 | | [ ] |
+| S-1102 | Là Dev, tự động kiểm tra Admin Portal hiển thị đúng danh sách documents. | P1 | | [ ] |
+| S-1103 | Là Dev, tự động kiểm tra tính năng cập nhật metadata và manual re-index. | P2 | | [ ] |
+
 ## Đề xuất thứ tự Sprint (gợi ý)
 
 1. **Nền tảng (P0)**: S-0201, S-0202, S-0401, S-0402, S-0103 — không có RBAC + index thì các UoB khác không chạy đúng.
@@ -179,3 +188,4 @@ project-management/
 - 2026-06-11: Bắt đầu Sprint 09; cập nhật trạng thái các task P0 (S-0103, S-0201, S-0202, S-0401, S-0402) thành Done vì foundation đã được build từ Sprint 01.
 - 2026-06-11: Rà soát toàn bộ codebase, chuyển sang Sprint 10; cập nhật Done cho các tính năng thực tế đã code xong ở các sprint cũ (Slack, Handoff, Skill). S-0501 chuyển sang In Progress.
 - 2026-06-13: Hoàn tất S-0501; Admin metadata UI/API dùng `TagIds` canonical, manual/bulk re-index restamp Knowledge permissions bằng tag ID.
+- 2026-06-13: Bắt đầu Sprint 11; tập trung vào Live Admin Portal Verification và E2E Testing với Playwright.
