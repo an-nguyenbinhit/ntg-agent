@@ -270,7 +270,7 @@ public class AgentService
     {
         if (promptRequest.AgentId == new Guid("760887e0-babd-41ae-aec1-b6ac3803d348"))
         {
-            await foreach (var response in TestOrchestratorInvokePromptStreamingInternalAsync(promptRequest, history, userId))
+            await foreach (var response in TestOrchestratorInvokePromptStreamingInternalAsync(promptRequest, history, userId, tokenUsageInfo))
             {
                 yield return new PromptResponse(response);
             }
@@ -354,7 +354,8 @@ public class AgentService
     private async IAsyncEnumerable<string> TestOrchestratorInvokePromptStreamingInternalAsync(
         PromptRequestForm promptRequest,
         List<PChatMessage> history,
-        Guid? userId)
+        Guid? userId,
+        TokenUsageInfo tokenUsageInfo)
     {
         var triageAgent = await _agentFactory.CreateAgent(promptRequest.AgentId);
         var csharpAgent = await _agentFactory.CreateAgent(new Guid("684604F0-3362-4499-A9B9-24AF973DCEBA")); // Gemini Agent ID
@@ -382,6 +383,14 @@ public class AgentService
         await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
         await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
         {
+            if (evt is AgentResponseEvent are && are.Response?.Usage != null)
+            {
+                tokenUsageInfo.InputTokens += are.Response.Usage.InputTokenCount ?? 0;
+                tokenUsageInfo.OutputTokens += are.Response.Usage.OutputTokenCount ?? 0;
+                tokenUsageInfo.ReasoningTokens += are.Response.Usage.ReasoningTokenCount ?? 0;
+                tokenUsageInfo.TotalTokens += are.Response.Usage.TotalTokenCount ?? 0;
+            }
+
             if (evt is WorkflowOutputEvent e)
             {
                 yield return e.Data?.ToString() ?? string.Empty;
@@ -389,7 +398,6 @@ public class AgentService
         }
         // Inject long-term memories for authenticated users
         await InjectLongTermMemories(userId, chatHistory, promptRequest.Prompt);
-        // TODO: Extract token usage from workflow run if possible
     }
 
     private async Task InjectLongTermMemories(Guid? userId, List<ChatMessage> chatHistory, string userPrompt)
